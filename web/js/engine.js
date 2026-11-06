@@ -16,6 +16,26 @@ function curve(fn) {
 export const FADE_IN = curve((x) => Math.sin((Math.PI / 2) * x));
 export const FADE_OUT = curve((x) => Math.cos((Math.PI / 2) * x));
 
+// The fade law of a splice whose two sides correlate by rho (Fink, Holters &
+// Zölzer 2016): fade-in c(t) and fade-out c(1 - t) keep the sum's power
+// constant, c(t)^2 + c(1 - t)^2 + 2 rho c(t) c(1 - t) = 1. With v = 2t - 1,
+// c = (u + v) / 2 and u = sqrt((2 - (1 - rho) v^2) / (1 + rho)). rho 0 is the
+// equal-power law (unrelated audio: kept as the sine pair), rho 1 the
+// equal-gain one (the same audio, which equal power swells by 3 dB mid-fade).
+const laws = new Map();
+export function fadeLaw(rho) {
+  const r = Math.round(Math.min(1, Math.max(0, rho || 0)) * 20) / 20;
+  if (r === 0) return [FADE_IN, FADE_OUT];
+  if (!laws.has(r)) {
+    const c = (t) => {
+      const v = 2 * t - 1;
+      return (Math.sqrt((2 - (1 - r) * v * v) / (1 + r)) + v) / 2;
+    };
+    laws.set(r, [curve(c), curve((t) => c(1 - t))]);
+  }
+  return laws.get(r);
+}
+
 // A band at or below this many dB is killed outright (gain 0).
 export const KILL_DB = -60;
 const toGain = (db) => (db <= KILL_DB ? 0 : dbToGain(db));
@@ -489,11 +509,11 @@ export class Voice {
     this.gain.disconnect();
   }
 
-  start(when, offset, rate, fadeIn) {
+  start(when, offset, rate, fadeIn, rho = 0) {
     this._read(when, offset, rate);
     if (fadeIn > 0) {
       this.gain.gain.setValueAtTime(0, when);
-      this._curve(FADE_IN, when, fadeIn);
+      this._curve(fadeLaw(rho)[0], when, fadeIn);
     } else {
       this.gain.gain.setValueAtTime(1, when);
     }
@@ -626,8 +646,8 @@ export class Voice {
     this._curve(values, when, dur);
   }
 
-  fadeOut(when, dur) {
-    this._curve(FADE_OUT, when, dur);
+  fadeOut(when, dur, rho = 0) {
+    this._curve(fadeLaw(rho)[1], when, dur);
     this.stopAt(when + dur + 0.02);
   }
 

@@ -126,6 +126,20 @@ def fail(tid: str, e: Exception) -> None:
                    error=str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}")
 
 
+def _refresh_jumps(tid: str) -> None:
+    """Jumps found before the sample-level look at the splices (splice.py:
+    their entries lack rho) searched again now that the sound is back: a few
+    seconds of CPU, no GPU."""
+    a = library.read_json(library.analysis_path(tid)) or {}
+    if not any(len(j) < 7 for j in a.get("jumps", [])[:1]):
+        return
+    try:
+        from .analysis import pipeline
+        pipeline.recompute_jumps(tid)
+    except Exception:
+        traceback.print_exc()  # the jumps it had still serve
+
+
 def process(tid: str, on_update: Callable[[dict], None] = lambda m: None, fetch_sound: bool = True) -> str:
     """Returns the final status ("ready" or "error"). fetch_sound=False: the
     sound is downloaded already (the server's download queue), never here."""
@@ -174,6 +188,7 @@ def process(tid: str, on_update: Callable[[dict], None] = lambda m: None, fetch_
             # The sound came back for a song analysed before (it was deleted after
             # going unused): the same recording, so the analysis still fits it.
             if library.analysis_current(tid, meta) and known and abs(seconds - known) <= 1.0:
+                _refresh_jumps(tid)
                 stage("ready", 1.0, status="ready", error=None)
                 return "ready"
 

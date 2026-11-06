@@ -16,13 +16,15 @@ export class Track {
       const next = i + 1 < this.n ? a.beats[i + 1] : Math.min(this.end, a.beats[i] + this.medianIbi());
       this.dur[i] = Math.max(0.05, next - a.beats[i]);
     }
-    // jumps[i] = [{to, score, shift, xf, bridge}] for "after beat i, play beat to".
+    // jumps[i] = [{to, score, shift, xf, bridge, rho}] for "after beat i, play beat to".
     // Bridges lead out of stretches that would otherwise trap the walk, so they
-    // stay usable whatever the strictness setting.
+    // stay usable whatever the strictness setting. rho (the two sides'
+    // correlation across the crossfade) sets its fade law; analyses before it
+    // have none and keep equal power.
     this.jumps = Array.from({ length: this.n }, () => []);
-    for (const [i, j, score, shiftMs, xfMs = 12, bridge = 0] of a.jumps) {
+    for (const [i, j, score, shiftMs, xfMs = 12, bridge = 0, rho = 0] of a.jumps) {
       if (i >= 0 && i < this.n && j >= 0 && j < this.n) {
-        this.jumps[i].push({ to: j, score, shift: shiftMs / 1000, xf: xfMs / 1000, bridge: !!bridge });
+        this.jumps[i].push({ to: j, score, shift: shiftMs / 1000, xf: xfMs / 1000, bridge: !!bridge, rho });
       }
     }
     this.transitions = [];

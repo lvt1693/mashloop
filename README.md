@@ -10,7 +10,7 @@ Bài hay thường hết quá sớm. Cái này sửa lỗi đó.
 - [x] **18/10** Tab Tạo mashup (2–5 bài thành một bài mới, nền lấy từ đoạn thuần nhạc, ba tốc độ), rồi tạm ẩn vì chất lượng chưa đạt; tách giọng bằng BS-RoFormer.
 - [x] **21/10** Hàng chờ tải cho cả app (từng bài một, nghỉ 5–10 giây, tối đa 480p), ai cũng thấy, huỷ được bài của mình; tải YouTube bằng cookies; thư viện lưu trong trình duyệt, lần sau mở lại vẫn còn, đếm ngược 12 giờ giữ nhạc; trang quản trị /admin.
 - [x] **22/10–04/11** Chống lạm dụng: phải mở trang mới mở được phiên nghe, tự chặn 24 giờ ở app lẫn HAProxy, chặn nhúng trang và trình duyệt tự động, nhật ký truy cập; chuẩn bị để Google tìm thấy; dời sang server mới.
-- [x] **07/11** Banner quảng cáo và mã QR mời cà phê.
+- [x] **07/11** Banner quảng cáo và mã QR mời cà phê; mối nối trong bài được soi tới từng mẫu âm thanh: luật crossfade theo độ tương quan, đoạn copy-paste được ưu tiên.
 
 Mash ∞ Loop nghe kỹ từng beat của bài hát rồi phát mãi không dứt. Trong một bài, nó
 nhảy qua lại giữa những đoạn giống nhau đến mức bạn không biết mình đang ở lần lặp
@@ -299,6 +299,18 @@ Mỗi bài đi qua một dây chuyền nhỏ (`loopbox/analysis/`):
 5. Điểm nhảy là cặp beat mà cả cửa sổ 8 beat quanh chúng khớp nhau, cùng vị trí
    trong câu nhạc 4 ô nhịp, có crossfade riêng cho từng chỗ (12 ms nếu trống chắc,
    tới 60 ms nếu là nốt ngân). Đoạn cuối bài được nối cầu để không thành cái bẫy.
+   Những điểm nhảy khả dĩ nhất còn được soi tới từng mẫu âm thanh, như người dựng
+   nhạc zoom vào waveform trước khi cắt (`splice.py`):
+   - đích được nắn thêm tối đa 3 ms cho waveform khớp với đoạn lẽ ra sẽ phát, khi hai
+     bên thật sự giống nhau;
+   - đo độ tương quan của hai bên trong khoảng crossfade, rồi chọn luật crossfade theo
+     đó (Fink, Holters & Zölzer 2016): equal power cho hai đoạn khác nhau, tiến dần về
+     equal gain khi hai đoạn là một. Crossfade equal power trên hai đoạn y hệt nhau
+     phồng to 3 dB ở giữa;
+   - đoạn điệp khúc được copy-paste trong lúc làm nhạc (bài pop nào cũng có) là kiểu
+     nhảy không ai nghe ra, bất kể trước đó là gì. Ô nhịp sau điểm nối giống hệt ô
+     nhịp lẽ ra sẽ phát thì điểm nhảy được thưởng điểm, nên bài có thêm đường vòng
+     mà không gãy.
 6. Điểm nối giữa hai bài được tìm và lưu cho từng cặp, nên một cặp chỉ tính một lần
    cho tất cả mọi người. Phân tích chạy song song ở nhiều tiến trình dùng chung GPU.
 

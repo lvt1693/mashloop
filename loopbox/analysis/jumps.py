@@ -2,18 +2,31 @@
 
 An edge (i -> j) means "after beat i, play beat j instead of i + 1". It is good
 when the music around i + 1 (the natural successor) matches the music around j:
-the listener hears j's lead-in as i's and j's continuation as i + 1's."""
+the listener hears j's lead-in as i's and j's continuation as i + 1's.
+
+With the song's audio at hand, the likeliest edges are also looked at sample
+by sample (splice.py): where the bar after the junction is the very bar that
+would have played (a section pasted in production), the jump is inaudible
+whatever its features say, and it is rewarded, so a song gets more ways
+around it that do not break."""
 import numpy as np
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
+from ..config import ANALYSIS_SR
 from . import similarity as sim
+from . import splice
 
 MIN_GAP_BARS = 4     # shorter loops are seamless but make the walk feel stuck
 TAU_GOOD = 0.5       # keep everything up to here; the player filters by strictness
 TAU_MAX = 0.62       # never go above this, even for songs with few repeats
 MAX_PER_SOURCE = 2
 MAX_PER_DEST = 3
+POOL = 4             # edges looked at sample by sample: this many per beat, the likeliest first
+SAME_FROM = 0.75     # "same" (splice.py) from which a jump counts as a pasted section ...
+SAME_BONUS = 0.2     # ... and comes off its score by up to this much, at 1.0
+# (40 songs: kept jumps with same 0.75-0.9 mismatch 0.21 and from 0.95 0.10,
+# the rest 0.36; the jumps the bonus brought in replaced worse ones, at 0.19.)
 
 
 def _select(S: np.ndarray, n: int) -> list[tuple[int, int, float]]:
@@ -117,7 +130,9 @@ def placement_penalty(pos: np.ndarray, phrase: np.ndarray, vocal: np.ndarray, vo
 
 
 def find(feat: dict, pos: np.ndarray, meter: int, scales: tuple, beats: np.ndarray,
-         onset_env: np.ndarray, onset_rate: float, phrase: np.ndarray) -> dict:
+         onset_env: np.ndarray, onset_rate: float, phrase: np.ndarray, y22: np.ndarray | None = None) -> dict:
+    """y22: the song as mono at ANALYSIS_SR, for the sample-level look at the
+    splices (without it, onset alignment only and the equal-power law)."""
     n = len(pos)
     mu, sd, comp_scales = scales
     comps, gate = sim.components(feat, feat, mu, sd)
@@ -143,6 +158,30 @@ def find(feat: dict, pos: np.ndarray, meter: int, scales: tuple, beats: np.ndarr
         S = E + 0.3 * np.maximum(0.0, J - E) + placement_penalty(pos, phrase, feat["vocal"], voice_diff)
     # Near the song's edges E is inf and inf - inf is NaN: those are simply unusable.
     S = np.where(valid & np.isfinite(S), np.maximum(S, 0.0), np.inf)
+
+    ibi = float(np.median(np.diff(beats))) if n > 1 else 0.5
+    dp = sim.drum_presence(feat)
+    floor = splice.quiet_floor(y22, ANALYSIS_SR) if y22 is not None else 0.0
+    looks: dict[tuple[int, int], tuple[float, float, float, float]] = {}
+
+    def at(x: int, y: int) -> tuple[float, float, float, float]:
+        """(shift s, rho, same, crossfade ms) of edge (x, y), measured once."""
+        if (x, y) not in looks:
+            shift, _ = sim.align_offset(onset_env, beats[x], onset_env, beats[y], onset_rate, ibi)
+            xf = sim.crossfade_ms(max(dp[x - 1], dp[x]), max(dp[y - 1], dp[y]))
+            snap, rho, same = (splice.look(y22, ANALYSIS_SR, beats[x], beats[y] + shift, xf / 1000, meter * ibi, floor)
+                               if y22 is not None else (0.0, 0.0, 0.0))
+            looks[(x, y)] = (shift + snap, rho, same, xf)
+        return looks[(x, y)]
+
+    if y22 is not None:
+        fin = np.isfinite(S)
+        k = min(POOL * n, int(fin.sum()))
+        for f in (np.argpartition(np.where(fin, S, np.inf), k - 1, axis=None)[:k] if k else []):
+            x, y = divmod(int(f), n)
+            same = at(x, y)[2]
+            if same > SAME_FROM:
+                S[x, y] = max(0.0, S[x, y] - SAME_BONUS * (same - SAME_FROM) / (1 - SAME_FROM))
 
     chosen = _select(S, n)
     fallback = False
@@ -173,14 +212,13 @@ def find(feat: dict, pos: np.ndarray, meter: int, scales: tuple, beats: np.ndarr
     for x, y, s in bridges:
         edges[(x, y)] = (s, 1)
 
-    ibi = float(np.median(np.diff(beats))) if n > 1 else 0.5
-    dp = sim.drum_presence(feat)
-    jumps = []
+    jumps, pasted = [], 0
     for (x, y), (s, is_bridge) in edges.items():
         if x >= n or y >= n:
             continue
-        shift, corr = sim.align_offset(onset_env, beats[x], onset_env, beats[y], onset_rate, ibi)
-        xf = sim.crossfade_ms(max(dp[x - 1], dp[x]), max(dp[y - 1], dp[y]))
-        jumps.append([int(x - 1), int(y), round(s, 4), round(shift * 1000, 2), xf, is_bridge])
+        shift, rho, same, xf = at(x, y)
+        pasted += same > SAME_FROM
+        # [after beat, to beat, score, shift ms, crossfade ms, bridge, rho of the fade law]
+        jumps.append([int(x - 1), int(y), round(s, 4), round(shift * 1000, 2), xf, is_bridge, round(rho, 3)])
     jumps.sort()
-    return {"jumps": jumps, "lbp": int(lbp), "fallback": fallback, "bridges": len(bridges)}
+    return {"jumps": jumps, "lbp": int(lbp), "fallback": fallback, "bridges": len(bridges), "pasted": int(pasted)}

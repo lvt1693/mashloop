@@ -515,7 +515,7 @@ export class Player extends EventTarget {
         }
       } else if (routeJump !== undefined) {
         const e = T.jumps[i].find((x) => x.to === routeJump);
-        return { kind: "jump", track: T, beat: routeJump, rate: this._rate(), shift: e ? e.shift : 0, xf: e ? e.xf : SPLICE_XFADE };
+        return { kind: "jump", track: T, beat: routeJump, rate: this._rate(), shift: e ? e.shift : 0, xf: e ? e.xf : SPLICE_XFADE, rho: e ? e.rho : 0 };
       } else if (i + 1 < T.n) {
         return { kind: "seq", track: T, beat: i + 1, rate: this._rate(), semis: this._pitch() };
       }
@@ -524,7 +524,7 @@ export class Player extends EventTarget {
 
     const jump = this._walk(T, i, t);
     if (jump) {
-      return { kind: "jump", track: T, beat: jump.to, rate: this._rate(), shift: jump.shift, xf: jump.xf, forced: !!jump.forced };
+      return { kind: "jump", track: T, beat: jump.to, rate: this._rate(), shift: jump.shift, xf: jump.xf, rho: jump.rho || 0, forced: !!jump.forced };
     }
     if (i + 1 < T.n) return { kind: "seq", track: T, beat: i + 1, rate: this._rate(), semis: this._pitch() };
     // Fell off the end (no backward jump available): loop to the first beat.
@@ -647,8 +647,9 @@ export class Player extends EventTarget {
         const x = step.xf || SPLICE_XFADE;
         const v = (step.kind === "cut" && step.stretch) || this.engine.voice(T);
         v.shift = step.shift || 0;
-        v.start(t - x / 2, T.beats[step.beat] + step.shift - (x / 2) * step.rate, step.rate, x);
-        prev.voice.fadeOut(t - x / 2, x);
+        // (The fade law follows how alike the two sides are: a cut to another song has no rho.)
+        v.start(t - x / 2, T.beats[step.beat] + step.shift - (x / 2) * step.rate, step.rate, x, step.rho || 0);
+        prev.voice.fadeOut(t - x / 2, x, step.rho || 0);
         this.cur = { track: T, beat: step.beat, rate: step.rate, voice: v };
         if (!v.stretched) this.pitchRamp = null; // a plain voice plays at the song's own pitch
         this.cooldown = JUMP_COOLDOWN;
@@ -766,8 +767,8 @@ export class Player extends EventTarget {
       const x = e ? e.xf : SPLICE_XFADE;
       voiceA = this.engine.voice(A);
       voiceA.shift = e ? e.shift : 0;
-      voiceA.start(t - x / 2, A.beats[step.beat] + (e ? e.shift : 0) - (x / 2) * step.rate, step.rate, x);
-      prev.voice.fadeOut(t - x / 2, x);
+      voiceA.start(t - x / 2, A.beats[step.beat] + (e ? e.shift : 0) - (x / 2) * step.rate, step.rate, x, e ? e.rho : 0);
+      prev.voice.fadeOut(t - x / 2, x, e ? e.rho : 0);
       outStart = t + x / 2; // let the splice fade-in finish before the blend curve
       this.stats.jumps++;
       this.lastJumpAt = t;
@@ -961,8 +962,8 @@ export class Player extends EventTarget {
       const x = e ? e.xf : SPLICE_XFADE;
       voiceA = this.engine.voice(A);
       voiceA.shift = e ? e.shift : 0;
-      voiceA.start(t - x / 2, A.beats[step.beat] + (e ? e.shift : 0) - (x / 2) * rate, rate, x);
-      prev.voice.fadeOut(t - x / 2, x);
+      voiceA.start(t - x / 2, A.beats[step.beat] + (e ? e.shift : 0) - (x / 2) * rate, rate, x, e ? e.rho : 0);
+      prev.voice.fadeOut(t - x / 2, x, e ? e.rho : 0);
       this.stats.jumps++;
     } else if (rate !== prev.rate) {
       voiceA.setRate(t, rate);

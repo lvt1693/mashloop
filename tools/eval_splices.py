@@ -1,8 +1,9 @@
 """Objective check of in-song jumps: python tools/eval_splices.py [id ...]
 
 For every jump (after beat i play beat j) the spliced audio is rendered with
-the player's 12 ms equal-power crossfade and compared with what would have
-played naturally:
+a 12 ms crossfade under the player's fade law for that jump (equal power, or
+toward equal gain as its two sides correlate) and compared with what would
+have played naturally:
   mismatch  mean |log-mel difference| (dB) over 350 ms after the junction,
             relative to the same measure for random same-bar-position pairs
             (1.0 = no better than a random jump, 0 = identical to the original)
@@ -30,7 +31,17 @@ def logmel(x):
     return librosa.power_to_db(m, ref=1.0, top_db=None)
 
 
-def splice(y, s, d):
+def law(rho, t):
+    """The player's fade-in gain at t in [0, 1] for a splice whose sides
+    correlate by rho (engine.js fadeLaw); the fade-out is law(rho, 1 - t)."""
+    r = round(min(1.0, max(0.0, rho)) * 20) / 20
+    if r == 0:
+        return np.sin(0.5 * np.pi * t)
+    v = 2 * t - 1
+    return (np.sqrt((2 - (1 - r) * v * v) / (1 + r)) + v) / 2
+
+
+def splice(y, s, d, rho=0.0):
     """Audio heard when playback leaves y at time s and resumes at time d."""
     n_pre, n_post, n_xf = int(PRE * SR), int(POST * SR), int(XF * SR)
     si, di = int(round(s * SR)), int(round(d * SR))
@@ -39,15 +50,15 @@ def splice(y, s, d):
     ramp = np.linspace(0, 1, n_xf)
     head = y[si - n_pre - n_xf // 2: si + n_xf // 2].copy()
     tail = y[di - n_xf // 2: di + n_post].copy()
-    head[-n_xf:] *= np.cos(0.5 * np.pi * ramp)
-    tail[:n_xf] *= np.sin(0.5 * np.pi * ramp)
+    head[-n_xf:] *= law(rho, 1 - ramp)
+    tail[:n_xf] *= law(rho, ramp)
     spliced = np.concatenate([head[:-n_xf], head[-n_xf:] + tail[:n_xf], tail[n_xf:]])
     start = si - n_pre - n_xf // 2
     return spliced, y[start:start + len(spliced)]
 
 
-def measure(y, s, d):
-    sp, nat = splice(y, s, d)
+def measure(y, s, d, rho=0.0):
+    sp, nat = splice(y, s, d, rho)
     if sp is None:
         return None
     A, B = logmel(sp), logmel(nat)
@@ -80,9 +91,10 @@ def evaluate(tid, rng):
     base = float(np.median(base))
 
     rows = []
-    for i, j, score, shift_ms, *_ in a["jumps"]:
-        m = measure(y, end(i), beats[j] + shift_ms / 1000)
-        m0 = measure(y, end(i), beats[j]) if shift_ms else m
+    for i, j, score, shift_ms, *rest in a["jumps"]:
+        rho = rest[2] if len(rest) > 2 else 0.0
+        m = measure(y, end(i), beats[j] + shift_ms / 1000, rho)
+        m0 = measure(y, end(i), beats[j], rho) if shift_ms else m
         if m and m0:
             rows.append((score, m[0] / base, m[1], m0[0] / base, shift_ms))
     r = np.array(rows)

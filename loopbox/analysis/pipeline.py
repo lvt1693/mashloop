@@ -127,7 +127,7 @@ def analyze(tid: str, on_stage: Callable[[str, float], None] = lambda s, p: None
     rl = structure.roles(feat, pos, sec)
 
     on_stage("jumps", 0.85)
-    jr = jumpmod.find(feat, pos, meter, scales, beats, env, env_rate, phrase)
+    jr = jumpmod.find(feat, pos, meter, scales, beats, env, env_rate, phrase, y22)
     md = song_mood(feat, bpm, 0 if key["mode"] == "major" else 1)
 
     analysis = {
@@ -172,7 +172,7 @@ def analyze(tid: str, on_stage: Callable[[str, float], None] = lambda s, p: None
     stats = {
         "duration": round(duration, 1), "bpm": round(bpm, 1), "key": key["name"],
         "camelot": key["camelot"], "meter": meter, "beats": len(beats),
-        "jumps": len(jr["jumps"]), "lbp": jr["lbp"], "fallback": jr["fallback"],
+        "jumps": len(jr["jumps"]), "pasted": jr["pasted"], "lbp": jr["lbp"], "fallback": jr["fallback"],
         "analysis_version": ANALYSIS_VERSION, "analysis_seconds": round(time.time() - t0, 1),
         "mood": analysis["mood"],
         "stems_model": "htdemucs",  # until the stems pool separates it again
@@ -182,14 +182,18 @@ def analyze(tid: str, on_stage: Callable[[str, float], None] = lambda s, p: None
 
 
 def recompute_jumps(tid: str) -> dict:
-    """Re-runs only the jump search from the stored features (seconds, no GPU)."""
+    """Re-runs only the jump search from the stored features (seconds, no
+    GPU), with the sample-level look at the splices while the song's sound is
+    still on disk."""
     with np.load(library.features_path(tid)) as z:
         f = {k: z[k] for k in z.files}
     feat = {k: f[k] for k in ("chroma", "mfcc", "loud", "rhythm", "stems", "vocal", "dur", "vpitch", "vmfcc") if k in f}
     scales = similarity.own_scales(feat)
     f["mfcc_mu"], f["mfcc_sd"], f["scales"] = scales
+    path = library.audio_path(tid)
+    y22 = featmod.mono22(audio.load(path)) if path.exists() else None
     jr = jumpmod.find(feat, f["pos"], int(f["meter"]), scales, f["beats"], f["onset_env"], float(f["env_rate"]),
-                      f["phrase"])
+                      f["phrase"], y22)
     analysis = library.read_json(library.analysis_path(tid))
     md = song_mood(feat, float(f["bpm"]), int(f["key_mode"]))
     analysis.update(jumps=jr["jumps"], lbp=jr["lbp"], fallback=jr["fallback"],
@@ -197,6 +201,6 @@ def recompute_jumps(tid: str) -> dict:
     library.write_json(library.analysis_path(tid), analysis)
     f["lbp"] = np.array(jr["lbp"])
     save_features(tid, **f)
-    library.update(tid, jumps=len(jr["jumps"]), lbp=jr["lbp"], fallback=jr["fallback"],
+    library.update(tid, jumps=len(jr["jumps"]), pasted=jr["pasted"], lbp=jr["lbp"], fallback=jr["fallback"],
                    mood={"energy": md["energy"], "valence": md["valence"]})
     return jr
