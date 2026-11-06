@@ -112,6 +112,8 @@ body {
 
 ::selection { background: var(--accent); color: var(--on-accent); }
 
+.noscript { max-width: 40rem; margin: 24px auto; padding: 0 16px; color: var(--text-muted); }
+
 h1, h2, p { margin: 0; }
 
 button, input { font: inherit; color: inherit; }
@@ -183,8 +185,9 @@ kbd {
   border-bottom: 1px solid var(--line-soft);
 }
 
+.topbar__start { justify-self: start; display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
+
 .brand {
-  justify-self: start;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -215,6 +218,75 @@ kbd {
 }
 
 .topbar__end { justify-self: end; display: flex; align-items: center; gap: var(--space-3); }
+
+/* The two pages: plain words, the one you are on underlined by the room's light. */
+.views { display: flex; gap: 2px; }
+
+.views[hidden] { display: none; }
+
+.views a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  color: var(--text-muted);
+  font-size: var(--step--1);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+
+.views a::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px oklch(var(--acc) / 0.8);
+  transform: scaleX(0);
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+
+.views a[aria-current="page"] { color: var(--text); }
+
+.views a[aria-current="page"]::after { transform: scaleX(1); }
+
+@media (hover: hover) {
+  .views a:hover { color: var(--text); background: var(--ink-2); }
+}
+
+/* How many mashups this browser keeps; it breathes while one is being made. */
+.views__n {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--round);
+  background: var(--accent-lo);
+  color: var(--accent-hi);
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.views__n[hidden] { display: none; }
+
+.views__n[data-on] { background: var(--accent); color: var(--on-accent); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .views__n[data-busy] { animation: breathe 1.6s var(--ease-in-out) infinite alternate; }
+}
+
+/* The studio has no loop to switch: the mode and the shortcuts step aside. */
+body[data-view="mashup"] .mode, body[data-view="mashup"] .keys { visibility: hidden; }
 
 .keys { display: inline-flex; gap: 4px; }
 
@@ -285,7 +357,7 @@ kbd {
 .stage {
   position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto auto auto;
+  grid-template-rows: minmax(0, 1fr) auto auto auto auto;
   justify-items: center;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5) var(--space-4);
@@ -699,6 +771,13 @@ kbd {
 
 .hint, .row small, .keys-line { font-size: var(--step--2); line-height: 1.55; color: var(--text-faint); }
 
+/* Hosted: the limits per address, today's new songs left. */
+.quota { margin-top: var(--space-1); }
+
+.quota b { color: var(--text); font-weight: 500; }
+
+.quota--out { color: var(--text-muted); }
+
 /* Add / search */
 .add { display: grid; gap: var(--space-2); }
 
@@ -898,6 +977,133 @@ body.dragging::after {
 
 .shelf-head .mono { font-size: var(--step--2); color: var(--text-faint); }
 
+/* The saved library: kept in this browser, and how long the server still keeps
+   its sound if the listener leaves now (a ticking clock). */
+.keep { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); }
+
+.keep[hidden] { display: none; }
+
+.keep__line { margin: 0; font-size: var(--step--2); line-height: 1.55; color: var(--text-faint); }
+
+.keep__line:empty { display: none; }
+
+.keep__line b { color: var(--accent-hi); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.keep__retry {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-hi);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* The download queue: everyone's songs, fetched one at a time; one's own
+   named and called off from here, the others' only counted. */
+.dlq {
+  margin: var(--space-2) 0 var(--space-4);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--ink-1);
+}
+
+.dlq[hidden] { display: none; }
+
+.dlq .shelf-head { margin: 0 0 var(--space-2); }
+
+.dlq__note { margin: 0 0 var(--space-2); font-size: var(--step--2); line-height: 1.55; color: var(--text-muted); }
+
+.dlq__note b { color: var(--text); font-weight: 600; }
+
+.dlq__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+.dlq__item {
+  display: grid;
+  grid-template-columns: 1.6em minmax(0, 1fr) auto auto;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: 34px;
+  padding: 3px 4px 3px 6px;
+  border-radius: 9px;
+  font-size: var(--step--2);
+}
+
+.dlq__n { font-family: var(--font-mono); color: var(--text-faint); text-align: right; }
+
+.dlq__t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-faint); }
+
+.dlq__s { font-family: var(--font-mono); color: var(--text-faint); white-space: nowrap; }
+
+.dlq__item.mine { background: var(--accent-lo); }
+
+.dlq__item.mine .dlq__t { color: var(--text); font-weight: 500; }
+
+.dlq__item.now .dlq__s { color: var(--accent); }
+
+.dlq__more { padding: 4px 6px; font-size: var(--step--2); color: var(--text-faint); }
+
+.dlq__x {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  font: 500 var(--step--2) / 1 var(--font-text);
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast), transform var(--dur-instant) var(--ease-out);
+}
+
+.dlq__x:active { transform: scale(0.95); }
+
+.dlq__x:disabled { opacity: 0.5; cursor: default; }
+
+@media (hover: hover) {
+  .dlq__x:not(:disabled):hover { color: var(--text); background: var(--ink-3); border-color: var(--text-faint); }
+}
+
+/* Mashup view: the picks so far; on phones also the way back up to the studio. */
+.shelf-mash {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin: calc(-1 * var(--space-1)) 0 var(--space-3);
+  padding: 10px 12px;
+  border: 1px dashed oklch(var(--acc) / 0.45);
+  border-radius: 12px;
+  background: oklch(var(--acc) / 0.06);
+  color: var(--text-muted);
+  font-size: var(--step--2);
+  text-decoration: none;
+}
+
+.shelf-mash[hidden] { display: none; }
+
+.shelf-mash b { color: var(--text); font-weight: 600; }
+
+.shelf-mash .go { color: var(--accent-hi); font-weight: 600; }
+
+.plus {
+  display: inline-grid;
+  place-items: center;
+  width: 1.35em;
+  height: 1.35em;
+  border-radius: 6px;
+  background: var(--accent-lo);
+  color: var(--accent-hi);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  line-height: 1;
+}
+
+@media (min-width: 900px) {
+  .shelf-mash .go { display: none; }
+}
+
 /* Track shelf: every song is a little loop drawn from its own analysis. */
 .tracks { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 
@@ -956,7 +1162,8 @@ body.dragging::after {
   .track .acts button[data-act="play"]:hover { color: var(--on-accent); background: var(--accent); }
   .track .acts button[data-act="delete"]:hover { color: var(--danger); }
   /* Secondary actions wait for the pointer; touch and keyboard always see them. */
-  .track:not(:hover):not(:focus-within) .acts button:not([data-act="play"]) { opacity: 0; }
+  .track:not(:hover):not(:focus-within) .acts button:not([data-act="play"]):not([data-act="mash"]) { opacity: 0; }
+  .track .acts button[data-act="mash"]:hover { color: var(--accent-hi); background: var(--accent-lo); }
 }
 
 .track.playing { background: linear-gradient(90deg, var(--accent-lo), transparent 70%); }
@@ -968,6 +1175,20 @@ body.dragging::after {
 @media (prefers-reduced-motion: no-preference) {
   .track.playing .mini { animation: spin 14s linear infinite; }
 }
+
+/* Studio: "+" picks a song for the mashup; once picked it shows its place. */
+.track .acts button[data-act="mash"] { color: var(--accent); }
+
+.track .acts button[data-act="mash"] svg { stroke-width: 2; }
+
+.track .acts button[data-act="mash"][aria-pressed="true"] {
+  color: var(--on-accent);
+  background: var(--accent);
+  box-shadow: 0 0 14px -4px oklch(var(--acc) / 0.9);
+  font: 600 var(--step--1) / 1 var(--font-mono);
+}
+
+.track.picked { background: linear-gradient(90deg, oklch(var(--acc) / 0.09), transparent 70%); }
 
 .track.off { opacity: 0.5; }
 
@@ -1181,6 +1402,642 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 
 .keys-line kbd { margin: 0 2px; }
 
+/* ---------------------------------------------------------------- studio */
+
+/* The mashup studio takes the stage's place: the builder, and beside it (wide
+   screens) or above it (once there is one) the mashups this browser keeps. */
+.stage[hidden], .studio[hidden] { display: none; }
+
+.studio {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  justify-items: center;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-6) var(--space-7);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.studio__build, .studio__mine { width: 100%; max-width: 760px; min-width: 0; }
+
+.studio__build { display: grid; gap: var(--space-5); }
+
+.studio.has-mine .studio__mine { order: -1; }
+
+@media (min-width: 1360px) {
+  .studio { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); align-items: start; justify-items: stretch; }
+  .studio__build { justify-self: center; }
+  .studio.has-mine .studio__mine { order: 0; }
+  .studio__mine { position: sticky; top: 0; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .js .studio:not([hidden]) .studio__build, .js .studio:not([hidden]) .studio__mine { animation: tab-in var(--dur-slow) var(--ease-out) both; }
+  .js .studio:not([hidden]) .studio__mine { animation-delay: 60ms; }
+}
+
+.kicker { font: 500 var(--step--2) / 1.4 var(--font-mono); letter-spacing: 0.08em; color: var(--accent); }
+
+.studio__title {
+  margin-top: 6px;
+  font: 600 clamp(1.375rem, 1.05rem + 0.9vw, 1.875rem) / 1.2 var(--font-text);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.studio__lede { margin-top: var(--space-2); max-width: 62ch; font-size: var(--step--1); color: var(--text-muted); text-wrap: pretty; }
+
+/* A loop still playing behind the studio, named, with a way to stop it. */
+.studio__now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--ink-1);
+  font-size: var(--step--2);
+  color: var(--text-muted);
+}
+
+.studio__now[hidden] { display: none; }
+
+.studio__now b { color: var(--text); font-weight: 600; }
+
+.mx-now__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .mx-now__dot { animation: breathe 1.2s var(--ease-in-out) infinite alternate; }
+}
+
+.linkish {
+  min-height: 32px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--accent-hi);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: oklch(var(--acc) / 0.45);
+  text-underline-offset: 3px;
+  border-radius: 4px;
+}
+
+@media (hover: hover) {
+  .linkish:hover { text-decoration-color: currentColor; }
+}
+
+.step { display: grid; gap: var(--space-3); }
+
+.step__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+
+.step__head .mono { font-size: var(--step--2); color: var(--text-faint); }
+
+#mx-count.flash { color: var(--danger); }
+
+@media (prefers-reduced-motion: no-preference) {
+  #mx-count.flash { animation: nudge 0.42s var(--ease-out); }
+}
+
+/* The songs of the mashup, each with what it gives (its voice, its band). */
+.slots { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+
+.slot {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto auto;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: 58px;
+  padding: 8px 8px 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-left: 2px solid var(--c, var(--line));
+  border-radius: 12px;
+  background: var(--ink-1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .js .slot:not(.slot--empty) { animation: link-in var(--dur-slow) var(--ease-out) both; }
+}
+
+.slot .mini { width: 38px; height: 38px; display: block; }
+
+.slot .t { font-size: var(--step--1); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.slot .s { font: 400 var(--step--2) / 1.55 var(--font-mono); color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.slot .s .a { font-family: var(--font-text); color: var(--text-muted); }
+
+.slot--empty {
+  grid-template-columns: 38px minmax(0, 1fr);
+  border: 1px dashed var(--line);
+  background: none;
+  color: var(--text-faint);
+  font-size: var(--step--2);
+  line-height: 1.5;
+}
+
+.slot--empty b:not(.plus) { color: var(--text-muted); }
+
+.slot__ring { width: 34px; height: 34px; margin: 2px; border-radius: 50%; border: 1.5px dashed var(--line); }
+
+.slot--empty:first-of-type .slot__ring, .slot:not(.slot--empty) + .slot--empty .slot__ring { border-color: oklch(var(--acc) / 0.6); }
+
+.slot__x {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-faint);
+  transition: color var(--dur-fast), background-color var(--dur-fast), transform var(--dur-instant);
+}
+
+.slot__x svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+
+.slot__x:active { transform: scale(0.92); }
+
+@media (hover: hover) {
+  .slot__x:hover { color: var(--danger); background: var(--ink-3); }
+}
+
+/* What a song gives a swap: a small three-way switch. */
+.roles { display: inline-flex; padding: 2px; border: 1px solid var(--line-soft); border-radius: var(--round); background: var(--ink-0); }
+
+.roles button {
+  min-height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: var(--round);
+  background: none;
+  color: var(--text-faint);
+  font-size: var(--step--2);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color var(--dur-fast), background-color var(--dur-fast);
+}
+
+.roles button[aria-pressed="true"] { color: var(--on-accent); background: var(--accent); }
+
+.roles button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+@media (hover: hover) {
+  .roles button:not(:disabled):not([aria-pressed="true"]):hover { color: var(--text); }
+}
+
+/* The vibe: tiles that say what changes. */
+.vibes {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  gap: var(--space-2);
+}
+
+.vibe {
+  position: relative;
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--ink-1);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), background-color var(--dur-fast), transform var(--dur-instant);
+}
+
+.vibe input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+
+.vibe span { display: block; font-size: var(--step--2); line-height: 1.4; color: var(--text-faint); }
+
+.vibe b { display: block; font-size: var(--step--1); font-weight: 600; color: var(--text-muted); }
+
+.vibe:has(input:checked) { border-color: oklch(var(--acc) / 0.6); background: var(--accent-lo); }
+
+.vibe:has(input:checked) b { color: var(--text); }
+
+.vibe:has(input:focus-visible) { box-shadow: var(--focus); }
+
+.vibe:active { transform: scale(0.97); }
+
+@media (hover: hover) {
+  .vibe:hover { border-color: var(--line); }
+}
+
+.styles { grid-template-columns: repeat(3, 1fr); }
+
+/* The common tempo and key, set by hand (folded away). */
+.step--more { display: block; padding: 0 14px; border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--ink-1); }
+
+.step--more summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap);
+  list-style: none;
+  cursor: pointer;
+  font-size: var(--step--1);
+  font-weight: 500;
+  color: var(--text-muted);
+  border-radius: 8px;
+}
+
+.step--more summary::-webkit-details-marker { display: none; }
+
+.step--more summary .mono { margin-left: auto; font-size: var(--step--2); color: var(--accent); }
+
+.step--more summary::after {
+  content: "+";
+  width: 1em;
+  text-align: center;
+  color: var(--accent);
+  font-weight: 600;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.step--more[open] summary::after { transform: rotate(45deg); }
+
+.frame-set { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); padding-bottom: 14px; }
+
+.frame-set .hint { grid-column: 1 / -1; }
+
+.field-in { display: grid; gap: 6px; font-size: var(--step--2); color: var(--text-faint); }
+
+.field-in input, .field-in select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--ink-0);
+  color: var(--text);
+  font: 500 var(--step--1) / 1 var(--font-mono);
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+
+.field-in input::placeholder { color: var(--text-faint); font-family: var(--font-text); }
+
+.field-in input:focus-visible, .field-in select:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-lo); }
+
+/* The plan: the common frame in numbers, the form as a strip, each song's place. */
+.plan {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, oklch(var(--acc) / 0.06), transparent 55%), var(--ink-1);
+}
+
+.plan__body { display: grid; gap: var(--space-4); transition: opacity var(--dur-base) var(--ease-out); }
+
+.plan[data-state="loading"] .plan__body { opacity: 0.5; }
+
+.plan__empty { font-size: var(--step--1); color: var(--text-faint); }
+
+.plan__err, .mx__err, .hint.err { color: var(--danger); font-size: var(--step--1); line-height: 1.5; }
+
+.plan__nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
+
+.num { display: grid; gap: 2px; align-content: start; min-width: 0; }
+
+.num b { font: 500 var(--step-1) / 1.2 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
+
+.num b.txt { font: 600 var(--step-0) / 1.35 var(--font-text); }
+
+.num span { font-size: var(--step--2); line-height: 1.4; color: var(--text-faint); }
+
+.plan__srcs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+
+.plan__srcs li { display: grid; grid-template-columns: 10px minmax(0, auto) 1fr; gap: 10px; align-items: baseline; font-size: var(--step--2); }
+
+.plan__srcs i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+
+.plan__srcs .n { color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.plan__srcs .w { color: var(--text-faint); }
+
+.plan__notes { margin: 0; padding-left: 1.1em; font-size: var(--step--2); color: var(--text-muted); }
+
+/* The arrangement step by step, and another one of the same songs. */
+.plan__moves { display: grid; gap: 6px; padding-top: var(--space-3); border-top: 1px solid var(--line-soft); }
+
+.plan__moves-head { display: flex; align-items: center; gap: 10px; }
+
+.plan__moves-head h3 { margin: 0 auto 0 0; }
+
+.plan__moves-head .mono { font-size: var(--step--2); color: var(--text-faint); }
+
+.plan__moves ol { margin: 0; padding-left: 1.4em; display: grid; gap: 3px; font-size: var(--step--2); line-height: 1.5; color: var(--text-muted); }
+
+.plan__moves li::marker { color: var(--accent); font: 500 var(--step--2) var(--font-mono); }
+
+.mx-fx + .label { margin-top: var(--space-2); }
+
+.plan__notes li::marker { color: var(--accent); }
+
+/* The form strip: the voices on a thin lane, the band below it, each part as
+   high as it is intense and in the colour of its song, so the whole song
+   reads as one contour from intro to outro. */
+.form { position: relative; display: grid; gap: 4px; padding-top: 2px; --x: 100%; }
+
+.form[tabindex] { cursor: pointer; border-radius: 6px; }
+
+.form__voice, .form__band, .form__names { display: flex; gap: 2px; }
+
+.form__voice i, .form__band i, .form__names span { flex: var(--b) 0 0; min-width: 0; }
+
+.form__voice { height: 5px; }
+
+.form__voice i { border-radius: 3px; background: linear-gradient(90deg, var(--c), var(--c2, var(--c))); box-shadow: 0 0 8px -2px var(--c); }
+
+.form__voice i[data-none] { background: none; box-shadow: inset 0 -1px 0 var(--line-soft); }
+
+.form__band { height: 46px; align-items: flex-end; }
+
+.form__band i {
+  height: calc(var(--e) * 100%);
+  border-radius: 4px 4px 2px 2px;
+  background:
+    linear-gradient(180deg, oklch(1 0 0 / 0.16), transparent 40%),
+    linear-gradient(90deg, var(--c), var(--c2));
+  opacity: 0.86;
+  transition: opacity var(--dur-fast);
+}
+
+/* A build rises across its bars. */
+.form__band i[data-kind="build"] { height: 100%; clip-path: polygon(0 62%, 100% 18%, 100% 100%, 0 100%); }
+
+.form__band i[data-kind="intro"], .form__band i[data-kind="outro"], .form__band i[data-kind="break"] { opacity: 0.6; }
+
+@media (hover: hover) {
+  .form[tabindex] .form__band i:hover { opacity: 1; }
+}
+
+.form__names { font: 400 10.5px / 1.3 var(--font-mono); letter-spacing: 0.02em; color: var(--text-faint); }
+
+.form__names span { overflow: hidden; white-space: nowrap; }
+
+/* Played (or rendered) up to --x: what is beyond waits in the dark. */
+.form__dim {
+  position: absolute;
+  top: 0;
+  bottom: 18px;
+  left: var(--x);
+  right: 0;
+  background: oklch(0.16 var(--gc) var(--gh) / 0.62);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+
+.form__head {
+  position: absolute;
+  top: -3px;
+  bottom: 15px;
+  left: var(--x);
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--text);
+  box-shadow: 0 0 10px var(--accent), 0 0 2px var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+
+.form[data-mode="play"] .form__dim, .form[data-mode="play"] .form__head,
+.form[data-mode="busy"] .form__dim, .form[data-mode="busy"] .form__head { opacity: 1; }
+
+/* Being made: the strip lights up as the render goes, its edge a soft flare. */
+.form[data-mode="busy"] .form__dim { transition: left var(--dur-cine) var(--ease-out), opacity var(--dur-slow); }
+
+.form[data-mode="busy"] .form__head { background: var(--accent); transition: left var(--dur-cine) var(--ease-out), opacity var(--dur-slow); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .form[data-mode="busy"] .form__head { animation: flare 1.1s var(--ease-in-out) infinite alternate; }
+}
+
+/* Make it. */
+.make { display: grid; gap: var(--space-2); justify-items: start; }
+
+.make__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 26px 0 20px;
+  border: 0;
+  border-radius: var(--round);
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 600 var(--step-0) / 1 var(--font-text);
+  box-shadow: var(--glow);
+  transition: background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-instant) var(--ease-out), color var(--dur-fast);
+}
+
+.make__btn svg { width: 30px; height: 15px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+
+.make__btn:active:not(:disabled) { transform: scale(0.97); }
+
+.make__btn:disabled { background: var(--ink-3); color: var(--text-faint); box-shadow: none; cursor: not-allowed; }
+
+.make__btn[data-busy] { cursor: progress; }
+
+.make__btn[data-busy] svg { stroke-dasharray: 26 94; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .make__btn[data-busy] svg { animation: trace 1.1s linear infinite; }
+}
+
+@media (hover: hover) {
+  .make__btn:not(:disabled):hover { background: var(--accent-hi); box-shadow: 0 0 0 1px oklch(var(--acc) / 0.7), 0 0 40px -6px oklch(var(--acc) / 0.95); }
+}
+
+.make__btn:focus-visible { box-shadow: var(--focus), var(--glow); }
+
+/* The mashups this browser keeps. */
+.studio__mine { display: grid; gap: var(--space-3); align-content: start; }
+
+.mine { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+
+.mine__empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  text-align: center;
+  font-size: var(--step--2);
+  line-height: 1.55;
+  color: var(--text-faint);
+}
+
+.mine__empty svg { width: 48px; height: 24px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; opacity: 0.7; }
+
+.mx {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--ink-1);
+  transition: border-color var(--dur-slow) var(--ease-out), box-shadow var(--dur-slow) var(--ease-out), background-color var(--dur-slow);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .js .mx { animation: tab-in var(--dur-slow) var(--ease-out) both; }
+}
+
+.mx.on {
+  border-color: oklch(var(--acc) / 0.45);
+  background: linear-gradient(180deg, oklch(var(--acc) / 0.08), transparent 70%), var(--ink-1);
+  box-shadow: 0 18px 50px -32px oklch(var(--acc) / 0.7);
+}
+
+.mx__top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+
+.mx__head { min-width: 0; }
+
+.mx__title {
+  font-size: var(--step--1);
+  font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* The mashup being heard is the playing song: its title takes the display face. */
+.mx.on .mx__title { font: 500 var(--step-0) / 1.3 var(--font-display); letter-spacing: -0.01em; color: var(--accent-hi); }
+
+.mx__meta { margin-top: 2px; font-size: var(--step--2); line-height: 1.5; color: var(--text-faint); }
+
+.mx__play {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--glow);
+  transition: transform var(--dur-instant) var(--ease-out), background-color var(--dur-fast);
+}
+
+.mx__play svg { width: 20px; height: 20px; fill: currentColor; }
+
+.mx__play .i-load { width: 26px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 26 94; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .mx__play .i-load { animation: trace 1.1s linear infinite; }
+}
+
+.mx__play:active { transform: scale(0.94); }
+
+.mx__play:focus-visible { box-shadow: var(--focus), var(--glow); }
+
+@media (hover: hover) {
+  .mx__play:hover { background: var(--accent-hi); }
+}
+
+.mx__mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  color: var(--accent);
+}
+
+.mx__mark svg { width: 26px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 26 94; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .mx__mark svg { animation: trace 1.6s linear infinite; }
+}
+
+.mx__mark--err { color: var(--danger); font: 600 var(--step-1) / 1 var(--font-mono); border-color: oklch(0.74 0.14 30 / 0.5); }
+
+.mx__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ink-3); }
+
+/* Time left: hours, then minutes in the last hour; its ring empties as it goes. */
+.mx__ttl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px 5px 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--round);
+  font-size: var(--step--2);
+  line-height: 1;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.mx__ttl[hidden] { display: none; }
+
+.mx__ttl::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: conic-gradient(currentColor calc(var(--left, 1) * 1turn), oklch(1 0 0 / 0.12) 0);
+  mask: radial-gradient(circle, transparent 2.6px, #000 3.2px);
+}
+
+.mx__ttl[data-soon] { color: var(--danger); border-color: oklch(0.74 0.14 30 / 0.45); }
+
+.mx__status { font-size: var(--step--2); color: var(--accent); }
+
+.mx__status .mono { color: var(--text-muted); }
+
+.mx .progress { margin-top: -6px; }
+
+.mx__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.mx__time { margin-right: auto; font-size: var(--step--2); color: var(--text-faint); }
+
+.mx__loop, .mx__del {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: var(--step--2);
+  font-weight: 600;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast), transform var(--dur-instant), border-color var(--dur-fast);
+}
+
+.mx__loop { border: 1px solid oklch(var(--acc) / 0.55); background: var(--accent-lo); color: var(--accent-hi); }
+
+.mx__loop svg { width: 22px; height: 11px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+
+.mx__loop:disabled { opacity: 0.65; cursor: progress; }
+
+.mx__del { border: 1px solid transparent; background: none; color: var(--text-faint); }
+
+.mx__del svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+.mx__del[data-armed="1"] { color: var(--danger); border-color: oklch(0.74 0.14 30 / 0.5); }
+
+.mx__loop:active, .mx__del:active { transform: scale(0.97); }
+
+@media (hover: hover) {
+  .mx__loop:not(:disabled):hover { background: var(--accent); color: var(--on-accent); }
+  .mx__del:hover { color: var(--danger); background: var(--ink-2); }
+}
+
 /* ------------------------------------------------------------ responsive */
 
 /* ------------------------------------------------------------ consent */
@@ -1239,6 +2096,218 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 
 @keyframes consent-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } }
 
+/* ------------------------------------------------------------ support */
+
+/* Hosted: what pays for the server, one low strip under the setlist: the
+   banner (6:1, narrower on a short screen so the loops keep their room) and
+   the coffee. Its room is kept from the first paint (html.hosted), so the deck
+   does not jump when the banner arrives. */
+.support {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--space-3);
+  width: min(720px, 100%);
+}
+
+.support[hidden], .promo[hidden] { display: none; }
+
+.hosted .support[hidden] { display: flex; visibility: hidden; }
+
+.hosted .support[hidden] .promo[hidden] { display: grid; }
+
+.promo {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: min(540px, calc((100dvh - var(--topbar-h)) * 0.55));
+  display: grid;
+  gap: 2px;
+}
+
+.promo__slot {
+  position: relative;
+  aspect-ratio: 6 / 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--ink-2);
+  box-shadow: 0 0 0 1px var(--line-soft);
+  transition: box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.promo__slot:has(a:focus-visible) { box-shadow: var(--focus); }
+
+.promo__slot a { position: absolute; inset: 0; display: block; opacity: 0; outline: none; transition: opacity var(--dur-slower) var(--ease-in-out); }
+
+.promo__slot a.on { opacity: 1; }
+
+.promo__slot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.promo__cap { display: flex; align-items: center; justify-content: space-between; min-height: 24px; font-size: var(--step--2); line-height: 1; color: var(--text-faint); }
+
+.promo__dots { display: inline-flex; margin-right: -6px; }
+
+.promo__dots button { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: none; }
+
+.promo__dots button::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--text-faint);
+  opacity: 0.5;
+  transition: width var(--dur-base) var(--ease-out), background-color var(--dur-base), opacity var(--dur-base);
+}
+
+.promo__dots button[aria-current="true"]::before { width: 14px; background: var(--accent); opacity: 1; }
+
+.promo__dots button:focus-visible { outline: none; box-shadow: var(--focus); }
+
+.coffee {
+  flex: none;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  padding: 8px 10px 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: oklch(0.195 var(--gc) var(--gh) / 0.72);
+  color: var(--text);
+  transform-origin: 50% 100%;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.coffee img { width: 52px; height: 52px; padding: 3px; border-radius: 6px; background: #fff; }
+
+.coffee > span { display: grid; text-align: center; }
+
+.coffee b { font-size: var(--step--2); font-weight: 600; line-height: 1.2; }
+
+.coffee small { display: none; font-size: var(--step--2); color: var(--text-faint); }
+
+.coffee:focus-visible { outline: none; box-shadow: var(--focus); }
+
+.coffee:active { transform: scale(0.97); }
+
+@media (hover: hover) {
+  .coffee:hover { border-color: oklch(var(--acc) / 0.55); box-shadow: var(--glow); }
+}
+
+/* A little shake now and then, so it is found; still while pointed at. */
+@media (prefers-reduced-motion: no-preference) {
+  .coffee { animation: wiggle 5.6s ease-in-out 3s infinite; }
+  .coffee:hover, .coffee:focus-visible { animation-play-state: paused; }
+}
+
+/* (A phone's coffee is a whole row: only its QR shakes.) */
+@media (prefers-reduced-motion: no-preference) and (max-width: 899px) {
+  .coffee { animation: none; }
+  .coffee img { animation: wiggle 5.6s ease-in-out 3s infinite; }
+}
+
+@media (max-height: 820px) and (min-width: 900px) {
+  .coffee { gap: 3px; padding: 6px 8px 5px; }
+  .coffee img { width: 40px; height: 40px; padding: 2px; }
+}
+
+@keyframes wiggle {
+  0%, 84%, 100% { transform: rotate(0); }
+  86% { transform: rotate(-10deg) scale(1.04); }
+  89% { transform: rotate(9deg) scale(1.04); }
+  92% { transform: rotate(-6deg); }
+  95% { transform: rotate(4deg); }
+  97% { transform: rotate(-2deg); }
+}
+
+/* The coffee itself: the bank's QR, and the account to copy on a phone. */
+.donate { position: relative; width: min(400px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+
+.donate h2 { padding-right: 44px; }
+
+.donate__x {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+}
+
+.donate__x svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+.donate__qr { display: block; width: min(240px, 100%); height: auto; margin: var(--space-4) auto 0; border-radius: 12px; }
+
+.donate__phone { display: none; margin-top: var(--space-3); }
+
+.donate__acct {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--ink-2);
+  font-size: var(--step--1);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.donate__acct b { font-weight: 600; color: var(--text); }
+
+.donate__copy {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  min-height: var(--tap);
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+
+.donate__copy .mono { font-size: var(--step-0); letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+
+.donate__copy em { font-style: normal; font-size: var(--step--2); color: var(--accent-hi); }
+
+.donate__save {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text-muted);
+  font-size: var(--step--1);
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast);
+}
+
+.donate__x:focus-visible, .donate__copy:focus-visible, .donate__save:focus-visible { outline: none; box-shadow: var(--focus); }
+
+@media (hover: hover) {
+  .donate__x:hover { border-color: var(--line); color: var(--text); }
+  .donate__copy:hover { border-color: oklch(var(--acc) / 0.55); background: var(--accent-lo); }
+  .donate__save:hover { background: var(--ink-2); color: var(--text); }
+}
+
+@media (pointer: coarse) {
+  .donate__phone { display: block; }
+}
+
+@media (max-height: 760px) {
+  .donate__qr { width: min(190px, 100%); }
+}
+
 @keyframes fade-in { from { opacity: 0; } }
 
 @media (max-width: 1199px) {
@@ -1269,8 +2338,34 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   .readout--tl { left: var(--space-4); }
   .readout--tr { right: var(--space-4); }
   .deck { position: sticky; bottom: calc(var(--space-3) + env(safe-area-inset-bottom)); z-index: 5; }
+  /* The banner across the screen, the coffee a row of its own under it. */
+  .support { flex-wrap: wrap; gap: var(--space-2); }
+  .promo { flex-basis: 100%; max-width: none; }
+  .coffee { width: 100%; grid-template-columns: auto minmax(0, 1fr); justify-items: start; align-items: center; gap: var(--space-3); padding: 8px 12px; }
+  .coffee img { width: 40px; height: 40px; padding: 2px; }
+  .coffee > span { text-align: left; }
+  .coffee small { display: block; }
   .panel { border-left: 0; border-top: 1px solid var(--line-soft); }
   .tab { overflow: visible; }
+  .studio { overflow: visible; padding: var(--space-5) var(--space-4) var(--space-6); gap: var(--space-5); }
+}
+
+/* Phones: the two pages get their own row under the mark. */
+@media (max-width: 719px) {
+  .topbar { height: auto; padding-top: 4px; grid-template-areas: "brand mode end" "views views views"; }
+  .topbar__start { display: contents; }
+  .brand { grid-area: brand; }
+  .mode { grid-area: mode; }
+  .topbar__end { grid-area: end; }
+  .views { grid-area: views; margin: 2px calc(-1 * var(--space-4)) 0; padding: 0 var(--space-3); border-top: 1px solid var(--line-soft); }
+  .views a { flex: 1; min-height: 42px; border-radius: 0; }
+  .views a::after { left: 22%; right: 22%; bottom: 0; }
+  .plan__nums { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .styles { grid-template-columns: 1fr; }
+  .styles .kind { grid-template-columns: 40px 1fr; align-items: center; }
+  .slot { grid-template-columns: 38px minmax(0, 1fr) auto; }
+  .slot .roles { grid-column: 2 / -1; grid-row: 2; justify-self: start; }
+  .slot .slot__x { grid-column: 3; grid-row: 1; }
 }
 
 @media (max-width: 1199px) and (min-width: 900px) {
@@ -1281,8 +2376,11 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
   .brand { font-size: 0.875rem; gap: 4px; }
   .brand__inf { width: 26px; height: 13px; }
   .topbar__end { display: none; }
-  .topbar { grid-template-columns: auto 1fr; }
+  .topbar { grid-template-columns: auto 1fr; grid-template-areas: "brand mode" "views views"; }
   .mode { justify-self: end; }
+  .frame-set { grid-template-columns: 1fr; }
+  .mx__top { grid-template-columns: auto minmax(0, 1fr); }
+  .mx__ttl { grid-column: 2; justify-self: start; }
   .ro-stats { display: none; }
   .readout--tl { max-width: 62%; }
   .readout--tr { max-width: 34%; }
@@ -1311,3 +2409,9 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: var(--focu
 @keyframes link-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
 
 @keyframes tab-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+@keyframes breathe { from { opacity: 1; } to { opacity: 0.45; } }
+
+@keyframes nudge { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+
+@keyframes flare { from { box-shadow: 0 0 6px var(--accent); } to { box-shadow: 0 0 16px 2px var(--accent); } }

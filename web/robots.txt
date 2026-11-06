@@ -1,0 +1,10 @@
+# Mash ∞ Loop. The page is for everyone; the API is crawlable (a search
+# engine renders the page with it) but never indexed (X-Robots-Tag: noindex);
+# the admin page is not for anyone.
+User-agent: *
+Allow: /
+Disallow: /admin
+# (A banner's click, counted and sent on to the advertiser.)
+Disallow: /go/
+
+Sitemap: https://mashloop.truclv.com/sitemap.xml

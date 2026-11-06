@@ -41,8 +41,59 @@ SESSION_TTL_S = _env_int("MASHLOOP_SESSION_TTL_H", 12) * 3600
 # uploaded file has to be uploaded again). The sample library and the songs an
 # open library holds are kept.
 AUDIO_TTL_S = _env_int("MASHLOOP_AUDIO_TTL_H", 12) * 3600
+# Mashups (the "Tạo mashup" page): off unless MASHLOOP_MASHUPS=1 (hidden on the
+# page, and no new mashup is planned or made; the ones made stay playable).
+MASHUPS = os.environ.get("MASHLOOP_MASHUPS") == "1"
+# Kept this long after they are made (their creator can come back to
+# them), rendered this many at a time (CPU work: warping with Rubber Band, in
+# MASHUP_STRETCH_JOBS processes each), and refused past this many waiting.
+MASHUP_TTL_S = _env_int("MASHLOOP_MASHUP_TTL_H", 48) * 3600
+MASHUP_WORKERS = _env_int("MASHLOOP_MASHUP_WORKERS", 1)
+MASHUP_STRETCH_JOBS = _env_int("MASHLOOP_MASHUP_STRETCH_JOBS", 4)
+MASHUP_BACKLOG = _env_int("MASHLOOP_MASHUP_BACKLOG", 8)
+# The vocal stem (the voice handed over in the loop, the a cappella and the
+# instrumental of the mashups) is separated by BS-RoFormer (analysis/roformer.py)
+# in a pool of its own, one process holding the model on the GPU: right after a
+# song is analysed, before a mashup that sings with it, and for the songs
+# separated before (HTDemucs) whenever the pool is idle. A song's meta records
+# the model of its stem; 0 workers keeps the HTDemucs stems.
+STEMS_MODEL = "bs-roformer-viperx-1297"
+STEMS_WORKERS = _env_int("MASHLOOP_STEMS_WORKERS", 1)
 # JavaScript runtime yt-dlp uses for YouTube's player challenges (node or deno).
 JS_RUNTIME = os.environ.get("MASHLOOP_JS_RUNTIME") or "node"
+# YouTube cookies (Netscape format, from a logged-in browser) for yt-dlp, so
+# the server is not taken for a bot; used when the file exists. Kept out of
+# git and out of the code a deploy replaces (secrets/ beside the code).
+COOKIES = Path(os.environ.get("MASHLOOP_COOKIES") or ROOT / "secrets" / "youtube-cookies.txt")
+# Songs are fetched one at a time for the whole app, with a pause of this many
+# seconds (drawn at random between the two) after each: the sites see one
+# listener, not a burst. A video is never fetched above this height (the
+# sound is what is kept).
+DOWNLOAD_PAUSE_S = tuple(float(x) for x in (os.environ.get("MASHLOOP_DOWNLOAD_PAUSE_S") or "5,10").split(",")[:2])
+MAX_VIDEO_HEIGHT = _env_int("MASHLOOP_MAX_VIDEO_HEIGHT", 480)
+# The /admin page: its one account as a scrypt hash (set with `python -m
+# loopbox.adminauth`; without the file there is no admin page), the page
+# itself (outside web/: never served as a static file), and the counts it
+# shows, one file per day.
+ADMIN_FILE = Path(os.environ.get("MASHLOOP_ADMIN") or ROOT / "secrets" / "admin.json")
+ADMIN_WEB_DIR = ROOT / "admin"
+STATS_DIR = DATA_DIR / "stats"
+# Spotting and blocking abuse (guard.py): the key that hashes addresses (so a
+# blocked client stays blocked across restarts), and what is blocked.
+GUARD_KEY_FILE = ROOT / "secrets" / "guard.key"
+BLOCKLIST_FILE = DATA_DIR / "blocklist.json"
+# The same blocked and trusted addresses for HAProxy, which turns the blocked
+# away before the app (deploy/haproxy.cfg loads these files; the app keeps
+# them and HAProxy's running lists current). Only used where the files exist.
+HAPROXY_BLOCK_FILE = Path(os.environ.get("MASHLOOP_HAPROXY_BLOCK") or "/etc/haproxy/mashloop-block.lst")
+HAPROXY_TRUST_FILE = Path(os.environ.get("MASHLOOP_HAPROXY_TRUST") or "/etc/haproxy/mashloop-trust.lst")
+HAPROXY_SOCKET = os.environ.get("MASHLOOP_HAPROXY_SOCKET") or "/run/haproxy/admin.sock"
+# Hosted: visits held at most (past it the empty ones quiet longest go first),
+# new songs (the ones the server must fetch) one address may add a day, and
+# pages it may open an hour.
+MAX_SESSIONS = _env_int("MASHLOOP_MAX_SESSIONS", 5000)
+VISITS_HOUR = _env_int("MASHLOOP_VISITS_HOUR", 20)
+NEW_TRACKS_DAY = _env_int("MASHLOOP_NEW_TRACKS_DAY", 20)
 
 # Audio stored for playback and analysis: identical samples on both sides.
 SAMPLE_RATE = 44100

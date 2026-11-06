@@ -1,8 +1,10 @@
 """Download (or take the uploaded file) -> convert -> analyse, for one track.
-Run by the worker processes and by the command line. Linking the track to
-other songs is a separate job (worker.py), since which songs it meets depends
-on whose library it is in."""
+Run by the worker processes and by the command line. In the server the
+download is a step of its own (fetch, one song at a time for everyone:
+worker.py), before the analysis job. Linking the track to other songs is a
+separate job too, since which songs it meets depends on whose library it is in."""
 import re
+import time
 import traceback
 from pathlib import Path
 from typing import Callable
@@ -11,6 +13,8 @@ import soundfile as sf
 
 from . import audio, download, library
 from .config import ANALYSIS_VERSION, MAX_DURATION_S
+
+Cancelled = download.Cancelled
 
 
 def register(entry: dict) -> dict:
@@ -69,8 +73,62 @@ def upgrade(tid: str) -> bool:
         return False
 
 
-def process(tid: str, on_update: Callable[[dict], None] = lambda m: None) -> str:
-    """Returns the final status ("ready" or "error")."""
+def source_file(tid: str) -> Path | None:
+    """The song's downloaded or uploaded file, when whole (not a download cut
+    short: yt-dlp's .part, .ytdl and fragment files)."""
+    for p in library.track_dir(tid).glob("source.*"):
+        if not any(k in p.name for k in (".part", ".ytdl", ".temp")):
+            return p
+    return None
+
+
+def needs_fetch(tid: str) -> bool:
+    """True when a song's sound must be downloaded before it can be analysed
+    (a song from a link, with neither its sound nor a whole download on disk)."""
+    meta = library.read_meta(tid)
+    if not meta or meta.get("source") == "upload" or library.audio_path(tid).exists():
+        return False
+    return source_file(tid) is None
+
+
+def fetch(tid: str, cancelled: Callable[[], bool] = lambda: False,
+          on_update: Callable[[dict], None] = lambda m: None) -> Path:
+    """Downloads a registered song's sound into its folder (source.*), its
+    progress in its meta (the first 30 %), and takes the title, channel and
+    length the site gives. Raises Cancelled once cancelled() says so."""
+    meta = library.read_meta(tid)
+    if meta is None:
+        raise Cancelled()
+    if meta.get("duration") and meta["duration"] > MAX_DURATION_S:
+        raise RuntimeError(f"dài hơn {MAX_DURATION_S // 60} phút")
+    last = {"p": -1.0, "t": 0.0}
+
+    def progress(p: float) -> None:
+        now = time.time()
+        if p - last["p"] >= 0.02 or now - last["t"] >= 1.0:  # the meta is a file: not on every chunk
+            last.update(p=p, t=now)
+            m = library.update(tid, stage="downloading", status="downloading", progress=round(0.3 * p, 3))
+            if m:
+                on_update(m)
+
+    src, info = download.download(meta, library.track_dir(tid), progress, cancelled)
+    if info:
+        library.update(tid, title=info["title"], channel=info["channel"],
+                       duration=info.get("duration"), thumbnail=info.get("thumbnail") or meta.get("thumbnail"),
+                       # a credit set by hand (the sample libraries) is more exact: kept
+                       **({"credit": info["credit"]} if info.get("credit") and not meta.get("credit") else {}))
+    return src
+
+
+def fail(tid: str, e: Exception) -> None:
+    """The song's error, as the page shows it."""
+    library.update(tid, stage="error", progress=0.0, status="error",
+                   error=str(e) if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}")
+
+
+def process(tid: str, on_update: Callable[[dict], None] = lambda m: None, fetch_sound: bool = True) -> str:
+    """Returns the final status ("ready" or "error"). fetch_sound=False: the
+    sound is downloaded already (the server's download queue), never here."""
     def stage(name: str, progress: float, **extra):
         m = library.update(tid, stage=name, progress=round(progress, 3), **extra)
         if m:
@@ -86,19 +144,13 @@ def process(tid: str, on_update: Callable[[dict], None] = lambda m: None) -> str
             raise RuntimeError(f"dài hơn {MAX_DURATION_S // 60} phút")
         if not library.audio_path(tid).exists():
             known = meta.get("duration")  # what the song measured when it was analysed, if it was
-            d = library.track_dir(tid)
-            if meta.get("source") == "upload":
-                src = next(iter(d.glob("source.*")), None)
-                if src is None:
+            src = source_file(tid)
+            if src is None:
+                if meta.get("source") == "upload":
                     raise RuntimeError("file tải lên không còn trên server, hãy tải lại")
-            else:
-                stage("downloading", 0.0, status="downloading")
-                src, info = download.download(meta, d, lambda p: stage("downloading", 0.3 * p, status="downloading"))
-                if info:
-                    library.update(tid, title=info["title"], channel=info["channel"],
-                                   duration=info.get("duration"), thumbnail=info.get("thumbnail") or meta.get("thumbnail"),
-                                   # a credit set by hand (the sample libraries) is more exact: kept
-                                   **({"credit": info["credit"]} if info.get("credit") and not meta.get("credit") else {}))
+                if not fetch_sound:
+                    raise RuntimeError("chưa tải được bài này về, thử lại")
+                src = fetch(tid, on_update=on_update)
             stage("converting", 0.3, status="analyzing")
             try:
                 audio.to_flac(src, library.audio_path(tid))
@@ -133,5 +185,8 @@ def process(tid: str, on_update: Callable[[dict], None] = lambda m: None) -> str
         return "ready"
     except Exception as e:  # surfaced in the UI, never kills the worker
         traceback.print_exc()
-        stage("error", 0.0, status="error", error=f"{type(e).__name__}: {e}" if not isinstance(e, RuntimeError) else str(e))
+        fail(tid, e)
+        m = library.read_meta(tid)
+        if m:
+            on_update(m)
         return "error"

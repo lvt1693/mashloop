@@ -3,37 +3,96 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Mash ∞ Loop</title>
-  <meta name="description" content="Mash ∞ Loop: nghe một bài mãi không dứt, hoặc nối cả thư viện thành một vòng nhạc vô tận.">
+  <title>Mash ∞ Loop – Nghe nhạc lặp vô tận, tự mix như DJ</title>
+  <meta name="description" content="Thêm nhạc bạn thích: Mash ∞ Loop dò nhịp, tìm chỗ nối, phát lặp vô tận và chuyển bài mượt như DJ. Miễn phí, không cần tài khoản.">
+  <link rel="canonical" href="https://mashloop.truclv.com/">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="google-site-verification" content="AyanZvPe5EU3yB_QTlMGWWyUbiucnWu0unr-YCX3eZw">
+  <meta name="application-name" content="Mash ∞ Loop">
+  <meta name="apple-mobile-web-app-title" content="Mash ∞ Loop">
   <meta name="theme-color" content="#16120e">
-  <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+  <!-- Search results show the favicon: a square multiple of 48 px (the .ico and
+       the 192 px PNG); the SVG for browsers that take it; the full-bleed ones
+       for a phone's home screen. -->
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/img/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Mash ∞ Loop">
+  <meta property="og:locale" content="vi_VN">
   <meta property="og:url" content="https://mashloop.truclv.com/">
-  <meta property="og:title" content="Mash ∞ Loop">
+  <meta property="og:title" content="Mash ∞ Loop – Nghe nhạc lặp vô tận, tự mix như DJ">
   <meta property="og:description" content="Nghe một bài mãi không dứt, hoặc mash cả thư viện thành một chuỗi nhạc vô tận. Mỗi bài là một vòng của dấu ∞, chỗ hai vòng chạm nhau là chỗ mix.">
   <!-- Absolute: link previews (Facebook, Zalo, Slack) do not resolve relative images. -->
   <meta property="og:image" content="https://mashloop.truclv.com/img/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Dấu ∞ của Mash ∞ Loop: hai vòng nhạc chạm nhau ở chỗ mix">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Mash ∞ Loop – Nghe nhạc lặp vô tận, tự mix như DJ">
+  <meta name="twitter:description" content="Nghe một bài mãi không dứt, hoặc mash cả thư viện thành một chuỗi nhạc vô tận.">
+  <meta name="twitter:image" content="https://mashloop.truclv.com/img/og.png">
+  <!-- For search engines: the site's name (shown above its results) and what it is. -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://mashloop.truclv.com/#website",
+        "url": "https://mashloop.truclv.com/",
+        "name": "Mash ∞ Loop",
+        "alternateName": ["Mash Loop", "MashLoop"],
+        "inLanguage": "vi"
+      },
+      {
+        "@type": "WebApplication",
+        "@id": "https://mashloop.truclv.com/#app",
+        "name": "Mash ∞ Loop",
+        "url": "https://mashloop.truclv.com/",
+        "description": "Thêm nhạc bạn thích: Mash ∞ Loop dò nhịp, tìm chỗ nối, phát lặp vô tận và chuyển bài mượt như DJ.",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "Trình duyệt web",
+        "browserRequirements": "Cần JavaScript và Web Audio",
+        "inLanguage": "vi",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "VND" },
+        "image": "https://mashloop.truclv.com/img/og.png",
+        "isPartOf": { "@id": "https://mashloop.truclv.com/#website" },
+        "sameAs": ["https://github.com/lvt1693/mashloop"]
+      }
+    ]
+  }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;600&display=swap" rel="stylesheet">
-  <script>document.documentElement.classList.add("js");</script>
+  <!-- (hosted: room kept for the banner from the first paint, so the deck does not jump when it comes) -->
+  <script>document.documentElement.classList.add("js", ...(/^(localhost|127\.|\[::1\])/.test(location.hostname) ? [] : ["hosted"]));</script>
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
   <div class="field" aria-hidden="true"></div>
 
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Mash ∞ Loop, tải lại trang">
-      <span class="brand__word">Mash</span>
-      <svg class="brand__inf" viewBox="0 0 48 24" aria-hidden="true">
-        <path class="brand__path" d="M24 12 C 30 4, 42 4, 42 12 C 42 20, 30 20, 24 12 C 18 4, 6 4, 6 12 C 6 20, 18 20, 24 12 Z"/>
-        <circle class="brand__dot" r="2.4" cx="24" cy="12"/>
-      </svg>
-      <span class="brand__word">Loop</span>
-    </a>
+    <div class="topbar__start">
+      <a class="brand" href="/" aria-label="Mash ∞ Loop, tải lại trang">
+        <span class="brand__word">Mash</span>
+        <svg class="brand__inf" viewBox="0 0 48 24" aria-hidden="true">
+          <path class="brand__path" d="M24 12 C 30 4, 42 4, 42 12 C 42 20, 30 20, 24 12 C 18 4, 6 4, 6 12 C 6 20, 18 20, 24 12 Z"/>
+          <circle class="brand__dot" r="2.4" cx="24" cy="12"/>
+        </svg>
+        <span class="brand__word">Loop</span>
+      </a>
+      <!-- Two pages on one: the loop, and the mashup studio (#mashup), shown
+           only when the server has mashups on (session.mashups). -->
+      <nav class="views" aria-label="Trang" hidden>
+        <a href="#nghe" data-view="listen" aria-current="page">Nghe</a>
+        <a href="#mashup" data-view="mashup">Tạo mashup<span class="views__n mono" id="mx-badge" hidden></span></a>
+      </nav>
+    </div>
 
     <div class="seg mode" role="radiogroup" aria-label="Chế độ phát">
       <span class="seg__ind" aria-hidden="true"></span>
@@ -47,6 +106,9 @@
     </div>
   </header>
 
+  <noscript>
+    <p class="noscript">Mash ∞ Loop cần JavaScript để phát nhạc. Thêm nhạc bạn thích: trang dò nhịp, tìm chỗ nối, phát lặp vô tận và chuyển bài mượt như DJ.</p>
+  </noscript>
   <main class="layout">
     <section class="stage" aria-label="Sân khấu">
       <p class="readout readout--tl" id="ro-tl"><b>MASH ∞ LOOP</b> // chưa phát</p>
@@ -92,6 +154,148 @@
       </div>
 
       <ol class="setlist" id="history" aria-label="Các bài đã phát trong phiên này"></ol>
+
+      <!-- Hosted (support.js): what pays for the server, a banner and a coffee. -->
+      <div class="support" id="support" hidden>
+        <figure class="promo" id="promo" hidden>
+          <div class="promo__slot" id="promo-slot"></div>
+          <figcaption class="promo__cap"><span>Quảng cáo</span><span class="promo__dots" id="promo-dots"></span></figcaption>
+        </figure>
+        <button type="button" class="coffee" id="coffee" aria-haspopup="dialog" aria-controls="donate">
+          <img src="/img/donate-qr.png" alt="" width="144" height="144">
+          <span><b>Mời cà phê</b><small>Quét mã ủng hộ</small></span>
+        </button>
+      </div>
+    </section>
+
+    <!-- The mashup studio (mashup.js): songs of the library made into one new song. -->
+    <section class="studio" id="studio" aria-labelledby="studio-title" hidden>
+      <div class="studio__build">
+        <header class="studio__head">
+          <p class="kicker">MASHUP</p>
+          <h1 class="studio__title" id="studio-title">Ghép vài bài thành một bài mới</h1>
+          <p class="studio__lede">Chọn 2 tới 5 bài trong thư viện. Mọi bài được kéo về cùng một nhịp, một tông, rồi dựng thành một bài có đầu có cuối: intro, verse, build-up, điệp khúc, drop, outro.</p>
+        </header>
+
+        <p class="studio__now" id="mx-now" hidden></p>
+
+        <section class="step" aria-labelledby="mx-h-songs">
+          <div class="step__head"><h2 class="label" id="mx-h-songs">Các bài</h2><span class="mono" id="mx-count"></span></div>
+          <ol class="slots" id="mx-slots"></ol>
+        </section>
+
+        <section class="step" aria-labelledby="mx-h-style">
+          <h2 class="label" id="mx-h-style">Cách ghép</h2>
+          <fieldset class="kinds styles" id="mx-style">
+            <legend class="sr">Cách ghép</legend>
+            <label class="kind">
+              <input type="radio" name="mx-style" value="auto">
+              <svg viewBox="0 0 40 20" aria-hidden="true"><circle cx="11" cy="10" r="5"/><circle cx="20" cy="10" r="5"/><circle cx="29" cy="10" r="5"/><path d="M6 17h28" stroke-dasharray="2 2"/></svg>
+              <span><b>Tự do</b>ai hát trên nhạc ai, thứ tự, kỹ thuật: chọn theo độ hợp nhau</span>
+            </label>
+            <label class="kind">
+              <input type="radio" name="mx-style" value="duet">
+              <svg viewBox="0 0 40 20" aria-hidden="true"><path d="M10 9V6a3 3 0 0 1 6 0v3"/><path d="M24 9V6a3 3 0 0 1 6 0v3"/><path d="M5 15h12M23 15h12"/><path d="M17 15l6 3M17 18l6-3" opacity=".6"/></svg>
+              <span><b>Song đấu</b>hai bài hợp nhau nhất: giọng bài này trên nhạc bài kia, rồi đảo lại</span>
+            </label>
+            <label class="kind">
+              <input type="radio" name="mx-style" value="medley">
+              <svg viewBox="0 0 40 20" aria-hidden="true"><circle cx="8" cy="10" r="5"/><circle cx="20" cy="10" r="5"/><circle cx="32" cy="10" r="5"/></svg>
+              <span><b>Liên khúc</b>từng bài nguyên bản nối nhau, giọng bài sau mash vào nhạc bài trước</span>
+            </label>
+          </fieldset>
+        </section>
+
+        <section class="step" aria-labelledby="mx-h-vibe">
+          <h2 class="label" id="mx-h-vibe">Không khí</h2>
+          <fieldset class="vibes" id="mx-vibe">
+            <legend class="sr">Không khí của bài</legend>
+            <label class="vibe"><input type="radio" name="mx-vibe" value="auto"><span><b>Tự chọn</b>theo mood của các bài</span></label>
+            <label class="vibe"><input type="radio" name="mx-vibe" value="original"><span><b>Nguyên bản</b>giữ chất các bài</span></label>
+            <label class="vibe"><input type="radio" name="mx-vibe" value="club"><span><b>Club remix</b>bass dày, kick nén, sidechain</span></label>
+            <label class="vibe"><input type="radio" name="mx-vibe" value="chill"><span><b>Chill</b>mềm, tối, tiếng đĩa than</span></label>
+            <label class="vibe"><input type="radio" name="mx-vibe" value="slowed"><span><b>Slowed + reverb</b>chậm lại, trầm xuống, vang</span></label>
+            <label class="vibe"><input type="radio" name="mx-vibe" value="speedup"><span><b>Speed up</b>nhanh lên, cao giọng</span></label>
+            <label class="vibe"><input type="radio" name="mx-vibe" value="acoustic"><span><b>Mộc</b>bỏ trống, chỉ giọng và nhạc cụ</span></label>
+          </fieldset>
+        </section>
+
+        <section class="step" aria-labelledby="mx-h-pace">
+          <h2 class="label" id="mx-h-pace">Tốc độ</h2>
+          <fieldset class="vibes" id="mx-pace">
+            <legend class="sr">Tốc độ của bài</legend>
+            <label class="vibe"><input type="radio" name="mx-pace" value="natural"><span><b>Tự nhiên</b>tempo chung của các bài, verse dài, intro và outro thong thả</span></label>
+            <label class="vibe"><input type="radio" name="mx-pace" value="fast"><span><b>Nhanh</b>tempo đẩy lên, vào điệp khúc sớm, kết gọn</span></label>
+            <label class="vibe"><input type="radio" name="mx-pace" value="faster"><span><b>Rất nhanh</b>tempo đẩy lên nhiều hơn, điệp khúc nối điệp khúc, đổi giọng liên tục</span></label>
+          </fieldset>
+        </section>
+
+        <section class="step" aria-labelledby="mx-h-len">
+          <h2 class="label sr" id="mx-h-len">Độ dài</h2>
+          <label class="row">
+            <span class="row__head"><span>Độ dài</span><em id="mx-v-len" class="mono"></em></span>
+            <input id="mx-len" type="range" min="60" max="600" step="15">
+            <small>Tối đa 10 phút. Bài được chia theo câu nhạc 4 ô nhịp, nên độ dài thật lệch vài giây.</small>
+          </label>
+        </section>
+
+        <section class="step" aria-labelledby="mx-h-fx">
+          <h2 class="label" id="mx-h-fx">Kỹ thuật ghép</h2>
+          <fieldset class="kinds mx-fx" id="mx-tech">
+            <legend class="sr">Kỹ thuật ghép được dùng</legend>
+            <label class="kind"><input type="checkbox" value="teaser"><svg viewBox="0 0 40 20" aria-hidden="true"><path d="M4 14h14" opacity=".5"/><path d="M22 12v-4a3 3 0 0 1 6 0v4"/><circle cx="34" cy="10" r="2" opacity=".5"/></svg><span><b>Hé lộ hook</b>một câu điệp khúc vọng ở cuối intro</span></label>
+            <label class="kind"><input type="checkbox" value="breakdown"><svg viewBox="0 0 40 20" aria-hidden="true"><path d="M17 13V8a3 3 0 0 1 6 0v5"/><path d="M4 17h32" stroke-dasharray="1 3"/></svg><span><b>Breakdown a cappella</b>gần hết nhạc tắt, chỉ còn giọng, rồi bùng lại</span></label>
+            <label class="kind"><input type="checkbox" value="double"><svg viewBox="0 0 40 20" aria-hidden="true"><path d="M8 13V8a3 3 0 0 1 6 0v5"/><path d="M26 13V8a3 3 0 0 1 6 0v5"/><path d="M4 17h32"/></svg><span><b>Cao trào hai giọng</b>hai hook cùng lúc, hoặc hát đối đáp</span></label>
+            <label class="kind"><input type="checkbox" value="chop"><svg viewBox="0 0 40 20" aria-hidden="true"><path d="M4 15V7M9 15V7M17 15V7M22 15V7M30 15V7M35 15V7"/></svg><span><b>Băm giọng</b>một chữ của hook cắt theo nhịp trong đoạn drop</span></label>
+          </fieldset>
+          <h2 class="label">Kiểu chuyển đoạn</h2>
+          <fieldset class="kinds mx-fx" id="mx-moves">
+            <legend class="sr">Kiểu chuyển đoạn được dùng</legend>
+            <label class="kind"><input type="checkbox" value="blend"><svg viewBox="0 0 40 20" aria-hidden="true"><circle cx="13" cy="10" r="7"/><circle cx="27" cy="10" r="7"/><path d="M20 15v-4"/></svg><span><b>Blend và mash</b>hai nền đan nhau, đổi bass; giọng mới vào trên nền cũ</span></label>
+            <label class="kind"><input type="checkbox" value="buildup"><svg viewBox="0 0 40 20" aria-hidden="true"><path d="M3 17C12 17 20 13 26 4"/><path d="M30 3v14"/><circle cx="35" cy="10" r="3"/></svg><span><b>Build-up và drop</b>dồn lên bằng tiếng gió, vào bằng cú nổ</span></label>
+            <label class="kind"><input type="checkbox" value="filter"><svg viewBox="0 0 40 20" aria-hidden="true"><path d="M3 15c6 0 7-10 13-10"/><path d="M24 5c6 0 7 10 13 10"/></svg><span><b>Lọc quét</b>intro mở dần, outro khép dần</span></label>
+            <label class="kind"><input type="checkbox" value="echo"><svg viewBox="0 0 40 20" aria-hidden="true"><circle cx="10" cy="10" r="6"/><circle cx="21" cy="10" r="4.5" opacity=".6"/><circle cx="30" cy="10" r="3" opacity=".35"/></svg><span><b>Echo out</b>câu cuối vọng lại, nền mới mở dần</span></label>
+            <label class="kind"><input type="checkbox" value="wash"><svg viewBox="0 0 40 20" aria-hidden="true"><circle cx="11" cy="10" r="6"/><path d="M19 4c6 2 6 10 0 12M24 3c8 3 8 11 0 14M29 2c10 4 10 12 0 16" opacity=".5"/></svg><span><b>Reverb wash</b>tan vào tiếng vang</span></label>
+            <label class="kind"><input type="checkbox" value="roll"><svg viewBox="0 0 40 20" aria-hidden="true"><path d="M4 15v-10M11 15v-10M16 15v-10M20 15v-10M23 15v-10M25.5 15v-10"/><circle cx="33" cy="10" r="5"/></svg><span><b>Cuộn nhịp</b>lặp dồn rồi vào drop</span></label>
+            <label class="kind"><input type="checkbox" value="gate"><svg viewBox="0 0 40 20" aria-hidden="true"><path d="M3 15V5h4v10h3V5h3v10h2V5h2v10h1.5V5"/><circle cx="31" cy="10" r="5"/></svg><span><b>Gate</b>băm nhịp đoạn cuối rồi chuyển</span></label>
+            <label class="kind"><input type="checkbox" value="brake"><svg viewBox="0 0 40 20" aria-hidden="true"><circle cx="12" cy="10" r="7"/><path d="M20 10h6M29 6v8"/></svg><span><b>Phanh đĩa</b>dừng hẳn rồi vào, đột ngột</span></label>
+            <label class="kind"><input type="checkbox" value="spin"><svg viewBox="0 0 40 20" aria-hidden="true"><path d="M20 4a7 7 0 1 0 7 7"/><path d="M27 6v5h-5"/></svg><span><b>Spinback</b>quay ngược đĩa rồi vào, đột ngột</span></label>
+          </fieldset>
+        </section>
+
+        <details class="step step--more" id="mx-more">
+          <summary>Nhịp và tông chung <span class="mono" id="mx-frame-set"></span></summary>
+          <div class="frame-set">
+            <label class="field-in">
+              <span>Tempo (BPM)</span>
+              <input id="mx-bpm" type="number" min="60" max="200" step="1" inputmode="numeric" placeholder="tự chọn">
+            </label>
+            <label class="field-in">
+              <span>Tông</span>
+              <select id="mx-key"><option value="">tự chọn</option></select>
+            </label>
+            <p class="hint">Để trống: chọn tempo giữa các bài, và tông cần dịch ít nhất. Đặt tông khác để nâng hay hạ cả bài; giọng hát được giữ âm sắc khi dịch tông.</p>
+          </div>
+        </details>
+
+        <section class="plan" id="mx-plan" aria-live="polite" aria-labelledby="mx-h-plan">
+          <h2 class="label" id="mx-h-plan">Khung chung của bài</h2>
+          <div class="plan__body" id="mx-plan-body"></div>
+        </section>
+
+        <div class="make">
+          <button type="button" class="make__btn" id="mx-make" disabled>
+            <svg viewBox="0 0 48 24" aria-hidden="true"><path d="M24 12 C 30 4, 42 4, 42 12 C 42 20, 30 20, 24 12 C 18 4, 6 4, 6 12 C 6 20, 18 20, 24 12 Z"/></svg>
+            <span>Dựng mashup</span>
+          </button>
+          <p class="hint" id="mx-make-hint">Dựng mất khoảng một phút. Bài được giữ 48 giờ: đóng trang rồi mở lại trên trình duyệt này vẫn thấy.</p>
+        </div>
+      </div>
+
+      <section class="studio__mine" aria-labelledby="mx-h-mine">
+        <div class="step__head"><h2 class="label" id="mx-h-mine">Mashup của bạn</h2><span class="mono" id="mx-mine-count"></span></div>
+        <ul class="mine" id="mx-mine"></ul>
+      </section>
     </section>
 
     <aside class="panel" id="panel" aria-label="Thư viện và tinh chỉnh">
@@ -115,10 +319,27 @@
           </label>
           <input id="file-input" class="sr" type="file" accept="audio/*,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus,.webm,.zip,application/zip" multiple>
           <p class="hint" id="add-hint">Bài mới được tải về, tách beat và giọng hát, rồi tự nối vào chuỗi.</p>
+          <!-- Hosted: the limits per address, and what is left of today's new songs. -->
+          <p class="hint quota" id="quota" hidden></p>
         </form>
         <div id="search-results" class="results" aria-live="polite"></div>
         <p id="worker" class="worker" aria-live="polite"></p>
-        <div class="shelf-head"><h2 class="label">Các vòng trong thư viện</h2><span id="lib-count" class="mono"></span></div>
+        <!-- Everyone's downloads (one song at a time, a pause between): one's own
+             named, with the wait before each, and called off from here. -->
+        <section class="dlq" id="dlq" aria-labelledby="dlq-h" hidden>
+          <div class="shelf-head"><h2 class="label" id="dlq-h">Hàng chờ tải</h2><span class="mono" id="dlq-count"></span></div>
+          <p class="dlq__note" id="dlq-note"></p>
+          <ol class="dlq__list" id="dlq-list"></ol>
+        </section>
+        <div class="shelf-head"><h2 class="label" id="lib-head">Các vòng trong thư viện</h2><span id="lib-count" class="mono"></span></div>
+        <!-- Hosted: the library kept in this browser for the next visit, and how
+             long the server still keeps its sound if the listener leaves now. -->
+        <div class="keep" id="lib-keep" hidden>
+          <label class="choice keep__opt"><input type="checkbox" id="keep-lib"><span><b>Lưu thư viện trên máy này</b>lần sau mở trang vẫn còn, chỉ lưu trong trình duyệt</span></label>
+          <p class="keep__line" id="keep-line"></p>
+        </div>
+        <!-- Mashup view: the songs picked so far, and the way back up to the studio (phones). -->
+        <a class="shelf-mash" id="mx-shelf" href="#studio" hidden></a>
         <ul id="track-list" class="tracks"></ul>
       </div>
 
@@ -360,7 +581,7 @@
 
       <!-- Hosted only (main.js shows it). -->
       <footer class="fine" id="fine" hidden>
-        <p><b>Dự án làm cho vui, phi thương mại:</b> không quảng cáo, không thu tiền, không cần tài khoản. Server không lưu địa chỉ IP hay thông tin cá nhân nào của bạn.</p>
+        <p><b>Dự án làm cho vui:</b> miễn phí, không cần tài khoản. Banner và mã QR mời cà phê là để trả tiền server; banner chỉ đếm lượt thấy và lượt bấm. Để chống lạm dụng, server ghi nhật ký truy cập (địa chỉ IP, trình duyệt, trang đã hỏi, trang dẫn tới) và giữ 7 ngày rồi xoá. Ngoài ra không lưu thông tin cá nhân nào của bạn.</p>
         <p>Nhạc thuộc về tác giả và chủ sở hữu. File nhạc tự xoá khỏi server sau <span data-ttl>12</span> giờ không ai nghe. Cần gỡ một bài? <a href="https://github.com/lvt1693/mashloop/issues" target="_blank" rel="noopener">Báo qua GitHub</a>.</p>
       </footer>
     </aside>
@@ -374,11 +595,34 @@
       <ul>
         <li>Bài chỉ được phân tích để phát lặp cho riêng bạn, trong lượt truy cập này.</li>
         <li>File nhạc tự xoá khỏi server sau <span data-ttl>12</span> giờ không ai nghe. Chỉ giữ lại kết quả phân tích: nhịp, điểm nhảy, điểm nối.</li>
-        <li>Không cần tài khoản, không lưu thông tin cá nhân.</li>
+        <li>Không cần tài khoản. Chỉ có nhật ký truy cập (IP, trình duyệt) giữ 7 ngày để chống lạm dụng.</li>
       </ul>
       <div class="consent__acts">
         <button type="submit" value="no" class="consent__no">Thôi</button>
         <button type="submit" value="yes" class="consent__yes" autofocus>Tôi đồng ý</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Hosted: the coffee (support.js). -->
+  <dialog class="consent donate" id="donate" aria-labelledby="donate-title">
+    <form method="dialog">
+      <button type="submit" value="close" class="donate__x" aria-label="Đóng">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+      <h2 id="donate-title">Mời mình ly cà phê nhé</h2>
+      <p>Mash ∞ Loop miễn phí, chạy trên một server có GPU. Thấy hay thì quét mã này bằng app ngân hàng nào cũng được. Cảm ơn bạn nhiều!</p>
+      <img class="donate__qr" src="/img/donate.png" alt="Mã QR chuyển khoản VPBank, LE VAN TRUC, 178971468" width="520" height="811" loading="lazy">
+      <p class="donate__phone">Đang dùng điện thoại? Lưu ảnh mã về máy rồi chọn quét mã từ ảnh trong app ngân hàng, hoặc chuyển thẳng tới số tài khoản.</p>
+      <div class="donate__acct">
+        <span>VPBank<br><b>LE VAN TRUC</b></span>
+        <button type="button" class="donate__copy" id="donate-copy" aria-describedby="donate-copied">
+          <span class="mono">178971468</span><em id="donate-copied">Sao chép</em>
+        </button>
+      </div>
+      <div class="consent__acts">
+        <a class="donate__save" href="/img/donate.png" download="mashloop-ung-ho-qr.png">Lưu ảnh mã</a>
+        <button type="submit" value="close" class="consent__yes">Đóng</button>
       </div>
     </form>
   </dialog>

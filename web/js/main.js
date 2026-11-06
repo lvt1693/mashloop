@@ -1,6 +1,8 @@
 import { api, hooks, Loader, ready, session } from "./api.js";
 import { Engine } from "./engine.js";
+import { Studio } from "./mashup.js";
 import { CRITERIA, DEFAULTS, keyFit, Player, setPhase, shiftCamelot } from "./player.js";
+import { noSupport, startSupport } from "./support.js";
 import * as theme from "./theme.js";
 import { bendNote, fmt, KIND_VI, short, splitTitle, Viz } from "./viz.js";
 
@@ -23,6 +25,8 @@ let metas = [];
 let workerState = null;
 let serverStale = false;
 let lastLinks = null;
+// Everyone's downloads, as the server shows them to this library (its own songs named).
+let queue = { count: 0, items: [] };
 // The sample libraries, by theme: songs kept analysed on the server, for a
 // visit that does not know what to add. They come in ready and the chain starts.
 const samples = { libraries: [], ids: [] };
@@ -79,7 +83,39 @@ const ICON = {
   retry: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12a7 7 0 1 0 2.1-5"/><path d="M5 4v4h4"/></svg>',
   del: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>',
   inf: '<svg viewBox="0 0 48 24" aria-hidden="true"><path d="M24 12 C 30 4, 42 4, 42 12 C 42 20, 30 20, 24 12 C 18 4, 6 4, 6 12 C 6 20, 18 20, 24 12 Z"/></svg>',
+  mash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>',
 };
+
+// ------------------------------------------------------------------- views
+
+// Two pages on one: the loop (#nghe) and the mashup studio (#mashup). The
+// library panel serves both; in the studio its songs get a "+" to pick them.
+// (The studio itself is made at the end, once everything it calls exists.)
+let view = null;
+let studio = null;
+
+function setView(v) {
+  if (v === view) return;
+  view = v;
+  document.body.dataset.view = v;
+  $(".stage").hidden = v !== "listen";
+  $("#studio").hidden = v !== "mashup";
+  $("#mx-shelf").hidden = v !== "mashup";
+  for (const a of document.querySelectorAll(".views a")) {
+    if (a.dataset.view === v) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  }
+  $("#lib-head").textContent = v === "mashup" ? "Chọn bài cho mashup" : "Các vòng trong thư viện";
+  document.title = v === "mashup" ? "Tạo mashup · Mash ∞ Loop" : "Mash ∞ Loop";
+  renderLibrary();
+  if (v === "mashup") studio.shown();
+  placeIndicators();
+}
+// Other anchors (#panel, #studio on phones) only scroll; they keep the view.
+// Without the studio (mashups off on the server) there is only the loop.
+const viewOfHash = () => (!studio ? "listen" : location.hash === "#mashup" ? "mashup"
+  : location.hash === "#nghe" || !location.hash ? "listen" : view || (location.hash === "#studio" ? "mashup" : "listen"));
+window.addEventListener("hashchange", () => setView(viewOfHash()));
 
 // ------------------------------------------------------------- segmented
 
@@ -104,7 +140,7 @@ const KINDS = ["cut", "drop", "blend", "fade", "echo", "wash", "riser", "flanger
 // 2: the abrupt effects (brake, roll) became opt-in; older saved settings that
 // had them on from the first release of effects are switched off once.
 const SETTINGS_VERSION = 2;
-const ui = { freq: 0.45, strict: 0.5, volume: 0.85, theme: "mood", crossKho: true, khoMinutes: 0 };
+const ui = { freq: 0.45, strict: 0.5, volume: 0.85, theme: "mood", crossKho: true, khoMinutes: 0, keepLib: true };
 try {
   const saved = JSON.parse(localStorage.getItem(STORE) || "null");
   if (saved) {
@@ -302,7 +338,15 @@ $("#btn-jump").addEventListener("click", () => player.requestJump());
 $("#btn-next").addEventListener("click", () => player.requestNextSong());
 $("#btn-kho").addEventListener("click", () => switchKho());
 document.addEventListener("keydown", (e) => {
-  if (e.target.closest("input, textarea, select")) return;
+  if (e.target.closest("input, textarea, select") || document.querySelector("dialog[open]")) return;
+  if (view === "mashup") {
+    // In the studio Space plays or pauses the mashup last heard.
+    if (e.code === "Space" && !e.target.closest("button, summary")) {
+      e.preventDefault();
+      studio.togglePlay();
+    }
+    return;
+  }
   if (e.code === "Space") {
     if (e.target.closest("button")) return; // a focused button handles Space itself
     e.preventDefault();
@@ -422,7 +466,8 @@ function renderTransport() {
 // ------------------------------------------------------------------ library
 
 const STAGES = {
-  queued: "đang chờ", downloading: "đang tải về", converting: "chuyển định dạng", analyzing: "đang phân tích",
+  queued: "đang chờ", downloading: "đang tải về", downloaded: "đã tải về, chờ phân tích", converting: "chuyển định dạng",
+  analyzing: "đang phân tích",
   loading: "đọc audio", beats: "dò beat", stems: "tách giọng và nhạc cụ", features: "đo đặc trưng", structure: "tìm cấu trúc",
   jumps: "tìm điểm nhảy", analyzed: "xong phân tích", linking: "nối với thư viện", ready: "sẵn sàng", error: "lỗi",
 };
@@ -530,20 +575,219 @@ function trackRow(m) {
     status = `<div class="s err">${esc(m.error || "lỗi")}</div>`;
   } else {
     lead = `<span class="pending" style="--p:${(m.progress || 0).toFixed(3)}" aria-hidden="true"></span>`;
-    status = `<div class="s">${STAGES[m.stage] || m.stage || "đang chờ"} · ${Math.round(100 * (m.progress || 0))}%</div><div class="progress"><i style="width:${Math.round(100 * (m.progress || 0))}%"></i></div>`;
+    // Waiting its turn to be downloaded: where it stands in the queue.
+    const q = queue.items.find((it) => it.id === m.id && it.state !== "downloading");
+    const what = !q ? `${STAGES[m.stage] || m.stage || "đang chờ"} · ${Math.round(100 * (m.progress || 0))}%`
+      : q.state !== "waiting" ? "sắp tải" : `chờ tải · thứ ${q.pos}${q.wait_s ? ` · ${waitText(q.wait_s)}` : ""}`;
+    status = `<div class="s">${what}</div><div class="progress"><i style="width:${Math.round(100 * (m.progress || 0))}%"></i></div>`;
   }
   const title = esc(songOf(m).title);
   const full = esc(`${m.title}${m.status === "ready" ? ` · ${m.jumps ?? 0} nhánh nhảy · ${fmt(m.duration || 0)}` : ""}`);
+  // In the studio: "+" picks the song for the mashup, its number once picked.
+  const k = view === "mashup" && m.status === "ready" ? studio.index(m.id) : -2;
+  const mash = k === -2 ? ""
+    : `<button type="button" data-act="mash" aria-pressed="${k >= 0}" aria-label="${k >= 0 ? `Bỏ ${title} khỏi mashup` : `Đưa ${title} vào mashup`}" title="${k >= 0 ? "Bỏ khỏi mashup" : "Đưa vào mashup"}">${k >= 0 ? `<span class="mono">${k + 1}</span>` : ICON.mash}</button>`;
   const acts = m.status === "ready"
-    ? `<button type="button" data-act="play" aria-label="Phát ${title}" title="Phát từ bài này">${ICON.play}</button>
+    ? `${mash}<button type="button" data-act="play" aria-label="Phát ${title}" title="Phát từ bài này">${ICON.play}</button>
        <button type="button" data-act="toggle" aria-label="${m.enabled === false ? "Đưa vào chuỗi" : "Bỏ khỏi chuỗi"}" title="${m.enabled === false ? "Đưa vào chuỗi" : "Bỏ khỏi chuỗi"}">${m.enabled === false ? ICON.in : ICON.out}</button>`
     : m.status === "error" ? `<button type="button" data-act="retry" aria-label="Thử lại" title="Thử lại">${ICON.retry}</button>` : "";
-  return `<li class="track ${playing ? "playing" : ""} ${m.enabled === false ? "off" : ""}" data-id="${esc(m.id)}">
+  return `<li class="track ${playing ? "playing" : ""} ${m.enabled === false ? "off" : ""} ${k >= 0 ? "picked" : ""}" data-id="${esc(m.id)}">
     ${lead}
     <div><div class="t" title="${full}">${title}</div>${status}</div>
     <div class="acts">${acts}<button type="button" data-act="delete" aria-label="Xoá ${title}" title="Xoá">${ICON.del}</button></div>
   </li>`;
 }
+
+const waitText = (s) => (s < 45 ? "dưới 1 phút" : `khoảng ${Math.round(s / 60)} phút`);
+
+// Hosted: the limits per address under the add box, and today's new songs left
+// (a song already on the server costs nothing: only the ones it must fetch count).
+function renderQuota(q) {
+  const el = $("#quota");
+  el.hidden = !q;
+  if (!q) return;
+  const left = Math.max(0, Math.min(q.new_day, q.new_left));
+  el.innerHTML = left
+    ? `Hôm nay bạn còn thêm được <b class="mono">${left}/${q.new_day}</b> bài mới (bài đã có sẵn trên server không tính). Mỗi máy mở trang tối đa ${q.visits_hour} lần mỗi giờ.`
+    : `Hôm nay bạn đã thêm đủ <b class="mono">${q.new_day}</b> bài mới: mai thêm tiếp được; bài đã có sẵn trên server và các kho có sẵn thì vẫn mở được.`;
+  el.classList.toggle("quota--out", !left);
+}
+
+// ------------------------------------------------------------ saved library
+// Hosted: the library is kept in this browser (the server keeps nothing about
+// the listener) and put back on the next visit: its songs, the ones left out
+// of the chain, the sample libraries opened. The server keeps a song's sound
+// for some hours after anyone last used it (an open page uses its songs); the
+// page counts that down. A song from a link whose sound went is fetched again
+// (its analysis stayed); an uploaded one has to be uploaded again.
+const SAVED = "mashloop.library.v1";
+const memo = { restored: false, from: null, note: "", sig: "", failed: "" };
+
+function readSaved() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVED) || "null");
+    return s && Array.isArray(s.ids) ? s : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveLibrary() {
+  if (!session.multiuser || !memo.restored) return; // (before the saved one is back: it would be overwritten)
+  const shown = metas.filter((m) => shownLib(libOf(m.id)));
+  // The listener's own songs from links also by their link: one the store no
+  // longer has at all (deleted whole when it was full) comes back from it.
+  const own = shown.filter((m) => !samples.ids.includes(m.id) && m.url && m.source !== "upload");
+  const data = { ids: shown.map((m) => m.id), off: shown.filter((m) => m.enabled === false).map((m) => m.id),
+    pinned: [...kho.pinned], cur: kho.cur, links: own.map((m) => ({ id: m.id, url: m.url })) };
+  const sig = JSON.stringify([ui.keepLib, data]);
+  if (sig === memo.sig) return;
+  memo.sig = sig;
+  try {
+    if (ui.keepLib) localStorage.setItem(SAVED, JSON.stringify({ v: 1, at: Date.now(), ...data }));
+    else localStorage.removeItem(SAVED);
+  } catch (_) {
+    /* storage unavailable: nothing kept */
+  }
+}
+
+async function restoreSaved() {
+  const saved = ui.keepLib ? readSaved() : null;
+  if (!saved?.ids.length) {
+    memo.restored = true;
+    return;
+  }
+  memo.failed = "";
+  renderKeep("Đang mở lại thư viện đã lưu…");
+  try {
+    const r = await api.restore(saved.ids, true);
+    for (const key of saved.pinned || []) kho.pinned.add(key);
+    if (saved.cur && !kho.cur) {
+      kho.cur = saved.cur;
+      kho.heard = 0;
+      kho.visits.set(saved.cur, Date.now());
+    }
+    const added = new Set((r.added || []).map((m) => m.id));
+    for (const s of saved.links || []) {
+      if (added.has(s.id) || !/^https?:\/\//.test(s.url || "")) continue;
+      const x = await api.add(s.url).catch(() => null);
+      for (const m of x?.added || []) added.add(m.id);
+    }
+    for (const id of saved.off || []) if (added.has(id)) await api.patch(id, { enabled: false }).catch(() => {});
+    memo.from = saved.at || null;
+    memo.note = r.note || "";
+    memo.restored = true;
+  } catch (err) {
+    memo.failed = err.message || "lỗi mạng";
+  }
+  await refresh();
+}
+
+const clock = (s) => {
+  s = Math.max(0, Math.floor(s));
+  return `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+};
+const when = (t) => {
+  const d = new Date(t), two = (x) => String(x).padStart(2, "0");
+  return `${two(d.getHours())}:${two(d.getMinutes())} ${d.getDate()}/${d.getMonth() + 1}`;
+};
+
+// The line under the library: whether it is kept on this device, and how long
+// the server still keeps its sound if the listener leaves now (ticking).
+function renderKeep(busy = "") {
+  const box = $("#lib-keep");
+  if (!session.multiuser) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  $("#keep-lib").checked = ui.keepLib;
+  const until = metas.map((m) => m.audio_until).filter(Boolean);
+  const parts = [];
+  if (busy) parts.push(busy);
+  else if (memo.failed) parts.push(`Chưa mở lại được thư viện đã lưu: ${esc(memo.failed)}. <button type="button" class="keep__retry">Thử lại</button>`);
+  else if (memo.from) parts.push(`Đã mở lại thư viện lưu lúc ${when(memo.from)}.`);
+  if (memo.note) parts.push(esc(memo.note));
+  if (until.length) {
+    parts.push(`Nhạc của bạn giữ trên server thêm <b class="mono" id="keep-clock">${clock(Math.min(...until) - Date.now() / 1000)}</b> nếu không ai nghe nữa; sau đó bài từ link tự tải lại khi mở, bài tải lên phải tải file lại.`);
+  } else if (!ui.keepLib) {
+    parts.push("Không lưu: tải lại trang là một thư viện mới.");
+  }
+  $("#keep-line").innerHTML = parts.join(" ");
+}
+
+// Ticks the countdown without redrawing the rest.
+setInterval(() => {
+  const el = document.querySelector("#keep-clock");
+  const until = metas.map((m) => m.audio_until).filter(Boolean);
+  if (el && until.length) el.textContent = clock(Math.min(...until) - Date.now() / 1000);
+}, 1000);
+
+$("#keep-lib").addEventListener("change", (e) => {
+  ui.keepLib = e.target.checked;
+  save();
+  memo.restored = true; // a choice made now: the library on the page is the one to keep (or forget)
+  saveLibrary();
+  renderKeep();
+});
+
+$("#lib-keep").addEventListener("click", (e) => {
+  if (e.target.closest(".keep__retry")) restoreSaved();
+});
+
+// The download queue: shown to everyone while it has songs, so a visitor who
+// comes later (or from another device) knows why theirs waits; their own
+// songs named, with the wait before each and a way to call them off.
+let lastQueueHtml = "";
+function renderQueue() {
+  const box = $("#dlq");
+  const q = queue;
+  box.hidden = !q.count;
+  if (!q.count) {
+    lastQueueHtml = "";
+    return;
+  }
+  const mine = q.items.filter((it) => it.mine);
+  const [lo, hi] = q.rest_s || [5, 10];
+  const why = `Server tải từng bài một và nghỉ ${lo}–${hi} giây giữa hai bài, để các trang nhạc không chặn.`;
+  const first = mine[0];
+  const note = first
+    ? `${why} Bài của bạn đầu tiên: <b>thứ ${first.pos}</b>${first.state === "downloading" ? ", đang tải"
+      : first.state !== "waiting" ? ", sắp tải" : first.wait_s ? `, còn ${waitText(first.wait_s)}` : ""}.`
+    : `${why} Bài bạn thêm lúc này sẽ đứng thứ ${q.count + 1}, chờ ${waitText(q.count * (q.per_s || 25))}.`;
+  const state = (it) => it.state === "downloading" ? `${Math.round(100 * (it.progress || 0))}%`
+    : it.state === "pause" ? `nghỉ ${Math.ceil(it.pause_s || 0)} s`
+    : it.state === "starting" ? "bắt đầu"
+    : it.mine && it.wait_s ? waitText(it.wait_s) : "chờ";
+  const rows = q.items.map((it) => `<li class="dlq__item${it.mine ? " mine" : ""}${it.pos === 1 ? " now" : ""}">
+      <span class="dlq__n">${it.pos}</span>
+      <span class="dlq__t"${it.mine ? ` title="${esc(it.title)}"` : ""}>${it.mine ? esc(short(it.title, 60)) : "Bài của người khác"}</span>
+      <span class="dlq__s">${state(it)}</span>
+      ${it.mine ? `<button type="button" class="dlq__x" data-id="${esc(it.id)}" aria-label="Huỷ tải ${esc(it.title)}">Huỷ</button>` : "<span></span>"}
+    </li>`).join("");
+  const hidden = q.count - q.items.length;
+  const html = `${rows}${hidden > 0 ? `<li class="dlq__more">và ${hidden} bài khác đang chờ</li>` : ""}`;
+  $("#dlq-count").textContent = `${q.count} bài`;
+  $("#dlq-note").innerHTML = note;
+  if (html !== lastQueueHtml) {
+    lastQueueHtml = html;
+    $("#dlq-list").innerHTML = html;
+  }
+}
+
+// Calling off one's own song: it leaves the library, and its place in the
+// queue goes to the next (another library that also wants it keeps it coming).
+$("#dlq-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button.dlq__x");
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    await api.remove(btn.dataset.id);
+  } catch (_) {
+    btn.disabled = false;
+  }
+  refresh();
+});
 
 let lastListHtml = "";
 function renderLibrary() {
@@ -585,6 +829,7 @@ function renderLibrary() {
     if (busy.length > active.length) line += ` · ${busy.length - active.length} bài chờ`;
   } else if (w.linking) line = `Đang nối các bài với nhau · còn ${w.linking} cặp`;
   $("#worker").textContent = line;
+  renderQueue();
   viz.setTitles(new Map(metas.map((m) => [m.id, songOf(m).title])));
   renderTransport();
 }
@@ -620,7 +865,8 @@ async function loadSamples(btn) {
     moreOpen = false;
     await refresh();
     const first = metas.find((m) => m.status === "ready" && lib.ids.includes(m.id));
-    if (first && !player.cur) await play(first.id);
+    // In the studio the songs are there to be picked, not played.
+    if (first && !player.cur && view !== "mashup") await play(first.id);
     prepareNext();
     renderTransport();
   } catch (err) {
@@ -640,6 +886,9 @@ $("#track-list").addEventListener("click", async (e) => {
   const id = btn.closest(".track").dataset.id;
   const m = byId().get(id);
   switch (btn.dataset.act) {
+    case "mash":
+      studio.toggle(id);
+      return;
     case "play":
       await play(id);
       break;
@@ -662,10 +911,12 @@ $("#track-list").addEventListener("click", async (e) => {
 
 async function refresh() {
   try {
-    const r = await api.tracks();
+    const r = await api.tracks(player.playing);
     metas = r.tracks;
     for (const m of metas) known.set(m.id, m);
     workerState = r.worker;
+    queue = r.queue || { count: 0, items: [] };
+    renderQuota(r.quota);
     loader.setMetas(metas);
     // New pairs were linked in this library: loaded songs pick up their new exits.
     if (lastLinks !== null && r.links !== lastLinks) {
@@ -679,19 +930,31 @@ async function refresh() {
     // do not send the flag at all.
     serverStale = !("stale_server" in r) || r.stale_server;
     renderLibrary();
+    saveLibrary();
+    renderKeep();
+    studio?.onMetas(metas);
   } catch (_) {
-    $("#worker").textContent = "Mất kết nối tới server";
+    // Refused a session (too many visits from this address): say so, and when.
+    $("#worker").textContent = session.blocked?.message || "Mất kết nối tới server";
   }
 }
 
+// How often the page asks for its library: often while its own songs are
+// fetched or analysed (the progress moves), less while they only wait in the
+// download queue, and every 20 s otherwise. A tab left playing for hours used
+// to ask every 5 s, 720 times an hour, for nothing new. Whatever the listener
+// does asks at once (refresh()).
+const IDLE_POLL_MS = 20000;
 let pollTimer = null;
 function schedulePoll() {
   clearTimeout(pollTimer);
-  const working = metas.some((m) => m.status !== "ready" && m.status !== "error") || workerState?.current;
+  const busy = metas.filter((m) => m.status !== "ready" && m.status !== "error");
+  const working = busy.some((m) => m.status !== "queued") || workerState?.current;
+  const waiting = busy.length || queue.items.some((it) => it.mine);
   pollTimer = setTimeout(async () => {
     await refresh();
     schedulePoll();
-  }, working ? 1200 : 5000);
+  }, working ? 1200 : waiting ? 2500 : IDLE_POLL_MS);
 }
 
 // --------------------------------------------------------------- add / search
@@ -910,9 +1173,10 @@ function renderStage() {
     const lib = empty ? stageSample() : null;
     setHTML($("#rc-kicker"), "HAI VÒNG ĐANG CHỜ");
     setHTML($("#rc-title"), empty ? "Thêm một bài để có vòng đầu tiên" : "Chọn một bài để bắt đầu vòng lặp");
-    setHTML($("#rc-meta"), !empty ? "Bấm phát, hoặc nút ▶ ở một bài trong thư viện"
-      : lib ? "Gõ tên bài ở ô Thêm bài trong thư viện, hoặc nghe thử ngay" : "Gõ tên bài ở ô Thêm bài trong thư viện");
-    cta.hidden = !lib;
+    setHTML($("#rc-meta"), session.blocked ? esc(session.blocked.message)
+      : !empty ? "Bấm phát, hoặc nút ▶ ở một bài trong thư viện"
+        : lib ? "Gõ tên bài ở ô Thêm bài trong thư viện, hoặc nghe thử ngay" : "Gõ tên bài ở ô Thêm bài trong thư viện");
+    cta.hidden = !lib || !!session.blocked;
     if (lib && !cta.disabled) {
       cta.dataset.key = lib.key;
       cta.querySelector("span").textContent = `Nghe thử kho ${lib.name}`;
@@ -1049,20 +1313,55 @@ setInterval(() => {
   requestAnimationFrame(step);
 })();
 
+// The studio, when the server has mashups on: its page in the nav, and the
+// view the address asks for.
+function openStudio() {
+  studio = new Studio({
+    engine,
+    player,
+    metas: () => metas,
+    songOf: (m) => songOf(m),
+    paintMinis: () => paintMinis(),
+    renderLibrary: () => renderLibrary(),
+    refresh: () => refresh(),
+    setLight: (id) => (viz.lightOf = id),
+    // A mashup's loop song is analysed: off to the stage, and it plays.
+    playLoop: (tid) => {
+      location.hash = "#nghe";
+      play(tid);
+    },
+    showLibrary: () => {
+      $(".tabs button[data-tab=library]").click();
+      $("#panel").scrollIntoView({ behavior: reduceMQ.matches ? "auto" : "smooth", block: "start" });
+      $("#add-input").focus({ preventScroll: true });
+    },
+  });
+  window.loopbox.studio = studio;
+  $(".views").hidden = false;
+  setView(viewOfHash());
+}
+
 applySettings();
 renderLooks();
 renderTransport();
 renderStage();
+setView(viewOfHash());
 placeIndicators();
 ready().then(() => {
   if (session.multiuser) {
-    // Hosted: a library per visit; pairs are linked automatically and shared.
-    $("#add-hint").textContent = "Mỗi lần mở trang là một thư viện mới. Bài ai đó đã thêm trước sẽ vào ngay, không phải chờ phân tích.";
+    // Hosted: a library per visit, kept in this browser for the next one;
+    // pairs are linked automatically and shared.
+    $("#add-hint").textContent = "Thư viện được lưu trong trình duyệt này: lần sau mở trang vẫn còn. Bài ai đó đã thêm trước sẽ vào ngay, không phải chờ phân tích.";
     $("#btn-relink").hidden = true;
     $("#fine").hidden = false;
     for (const el of document.querySelectorAll("[data-ttl]")) el.textContent = session.limits.audio_ttl_h || 12;
+    restoreSaved();
+    startSupport();
+  } else {
+    noSupport();
   }
   if (session.limits.upload_mb) $("#upload-limit").textContent = `, tối đa ${session.limits.upload_mb} MB`;
+  if (session.mashups && !studio) openStudio();
   renderLibrary();
   api.samples().then((s) => {
     samples.libraries = s.libraries || [];
@@ -1071,8 +1370,8 @@ ready().then(() => {
     renderLibrary();
     renderStage(); // the empty stage can offer one of them now
   }, () => {});
-}).catch(() => {});
+}).catch(noSupport);
 refresh().then(schedulePoll);
 
 // Handle for the browser console and the end-to-end test.
-window.loopbox = { player, engine, loader, play, refresh, applySettings, ui, viz, session };
+window.loopbox = { player, engine, loader, play, refresh, applySettings, ui, viz, session, studio };

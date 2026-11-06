@@ -18,3 +18,4 @@ fastapi
 uvicorn
 pydantic
 yt-dlp[default]
+pyloudnorm

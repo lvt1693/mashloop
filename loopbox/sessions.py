@@ -7,11 +7,18 @@ import threading
 import time
 
 from . import library, worker
-from .config import MAX_SESSION_TRACKS, MULTIUSER, SESSION_TTL_S
+from .config import MAX_SESSION_TRACKS, MAX_SESSIONS, MULTIUSER, SESSION_TTL_S
 
 _lock = threading.RLock()
 _sessions: dict[str, "SessionView"] = {}
 _local = None
+_started = time.time()
+RESTORE_GRACE_S = 180  # after a restart, the pages put their libraries back
+TOUCH_EVERY_S = 300  # how often an open page marks its songs as used
+# A visit with nothing in its library, quiet this long, is let go (a closed
+# page, or a program opening visit after visit); one with songs keeps its
+# SESSION_TTL_S, so a listener coming back finds their library.
+EMPTY_IDLE_S = 900
 
 
 class LimitError(Exception):
@@ -46,6 +53,10 @@ class View:
 
     def is_enabled(self, tid: str, meta: dict) -> bool:
         raise NotImplementedError
+
+    def keep_alive(self) -> None:
+        """Called whenever the page asks for its library (the personal app
+        keeps its sound: nothing to do)."""
 
     # -- transitions
     def transitions(self, tid: str) -> list[dict]:
@@ -86,9 +97,21 @@ class SessionView(View):
         self.id = sid
         self.ids: list[str] = []
         self.off: set[str] = set()
-        self.seen = time.time()
+        self.seen = self.created = time.time()
+        self.touched = 0.0
         # Scrambles the audio this session is sent (see server.audio).
         self.key = secrets.token_bytes(32)
+
+    def keep_alive(self) -> None:
+        """An open page uses its songs: marked as used every few minutes, so
+        their sound is deleted only AUDIO_TTL_S after the page last asked
+        (library.drop_idle_audio), and the time shown for it is true."""
+        now = time.time()
+        if now - self.touched < TOUCH_EVERY_S:
+            return
+        self.touched = now
+        for tid in self.track_ids():
+            library.touch(tid)
 
     def track_ids(self) -> list[str]:
         return list(self.ids)
@@ -150,12 +173,23 @@ class LocalView(View):
         library.update(tid, enabled=on)
 
 
+class Full(Exception):
+    """The server holds MAX_SESSIONS visits, none of them empty."""
+
+
 def create() -> View:
     if not MULTIUSER:
         return local()
     _sweep()
     sid = secrets.token_urlsafe(18)
     with _lock:
+        if len(_sessions) >= MAX_SESSIONS:
+            # Room: the empty visits that have been quiet longest go first.
+            empty = sorted((v for v in _sessions.values() if not v.ids), key=lambda v: v.seen)
+            for v in empty[:len(_sessions) - MAX_SESSIONS + 1]:
+                _sessions.pop(v.id, None)
+        if len(_sessions) >= MAX_SESSIONS:
+            raise Full()
         v = SessionView(sid)
         _sessions[sid] = v
     return v
@@ -204,7 +238,8 @@ def in_use() -> set[str]:
 def _sweep() -> None:
     now = time.time()
     with _lock:
-        for sid in [s for s, v in _sessions.items() if now - v.seen > SESSION_TTL_S]:
+        for sid in [s for s, v in _sessions.items()
+                    if now - v.seen > SESSION_TTL_S or (not v.ids and now - v.seen > EMPTY_IDLE_S)]:
             _sessions.pop(sid, None)
 
 
@@ -222,6 +257,22 @@ def _on_linked(tids: set[str]) -> None:
             v.linked()
 
 
+def held(tid: str) -> bool:
+    """Whether a live library holds the song (always, in the personal app)."""
+    if not MULTIUSER:
+        return True
+    with _lock:
+        return any(tid in v.ids for v in _sessions.values())
+
+
+def wanted(tid: str) -> bool:
+    """Whether a song still has someone waiting for it (to be downloaded).
+    Just after a restart every song does, until the pages have put their
+    libraries back."""
+    return held(tid) or time.time() - _started < RESTORE_GRACE_S
+
+
 worker.on_ready.append(_on_ready)
 worker.on_linked.append(_on_linked)
 worker.keep_ids = in_use
+worker.wanted = wanted

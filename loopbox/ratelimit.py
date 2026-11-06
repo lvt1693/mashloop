@@ -14,15 +14,20 @@ from collections import deque
 
 from fastapi import HTTPException
 
-from .config import MULTIUSER
+from .config import MULTIUSER, NEW_TRACKS_DAY, VISITS_HOUR
 
 # kind -> (requests allowed, per seconds, message)
 LIMITS = {
-    "session": (60, 3600, "mở trang quá nhiều lần"),
+    "session": (VISITS_HOUR, 3600, "mở trang quá nhiều lần"),
     "search": (60, 600, "tìm quá nhiều lần"),
     "new_track": (20, 3600, "thêm quá nhiều bài mới"),
+    # A day's worth, so nobody turns the server into their YouTube downloader
+    # (every new song is fetched with the server's YouTube cookies).
+    "new_track_day": (NEW_TRACKS_DAY, 86400, "thêm quá nhiều bài mới hôm nay"),
     "upload": (30, 3600, "tải lên quá nhiều file"),
     "audio": (200, 3600, "tải nhạc quá nhiều lần"),
+    "mashup": (6, 3600, "tạo quá nhiều bài mashup"),
+    "mashup_preview": (600, 3600, "xem trước mashup quá nhiều lần"),
 }
 PURGE_EVERY_S = 300
 # Tools run on the box itself (deploy/seed_*.py) reach the app on loopback;
@@ -33,6 +38,7 @@ _lock = threading.Lock()
 _hits: dict[tuple[str, str], deque] = {}
 _salt = secrets.token_bytes(32)
 _purged = {"at": 0.0}
+on_refused = lambda kind: None  # noqa: E731  (told of every refusal: the admin page counts them)
 
 
 def _who(ip: str) -> str:
@@ -59,10 +65,15 @@ def check(ip: str, kind: str, n: int = 1) -> None:
         q = _hits.setdefault((_who(ip), kind), deque())
         while q and now - q[0] > window:
             q.popleft()
-        if len(q) + n > allowed:
+        refused = len(q) + n > allowed
+        if refused:
             wait = int(window - (now - q[0])) + 1 if q else window
-            raise HTTPException(429, f"Bạn {what}, thử lại sau {max(1, wait // 60)} phút")
-        q.extend([now] * n)
+        else:
+            q.extend([now] * n)
+    if refused:
+        on_refused(kind)
+        later = f"{round(wait / 3600)} giờ" if wait > 5400 else f"{max(1, wait // 60)} phút"
+        raise HTTPException(429, f"Bạn {what}, thử lại sau {later}")
 
 
 def room(ip: str, kind: str) -> int:

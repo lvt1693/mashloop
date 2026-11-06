@@ -13,6 +13,7 @@ from ..config import DEVICE, SAMPLE_RATE
 _lock = threading.Lock()
 _beat_tracker = None
 _separator = None
+_vocal_model = None
 
 
 def device() -> str:
@@ -39,6 +40,52 @@ def separator():
             model.to(device()).eval()
             _separator = model
         return _separator
+
+
+def _oom(e: Exception) -> bool:
+    return isinstance(e, torch.cuda.OutOfMemoryError) or "out of memory" in str(e)
+
+
+class NoRoom(RuntimeError):
+    """The GPU has no room for the vocal model now (it is shared): try later."""
+
+
+def vocals(y: np.ndarray) -> np.ndarray:
+    """The vocal stem of y (frames, 2), by BS-RoFormer (roformer.py), the
+    model kept resident. On a machine with a GPU it runs there or not at all
+    (NoRoom when the GPU is full: on the CPU it takes the better part of an
+    hour per song); without one, on the CPU."""
+    global _vocal_model
+    from . import roformer
+    dev = device()
+    with _lock:
+        if _vocal_model is None:
+            _vocal_model = roformer.load("cpu")
+        model = _vocal_model
+    if dev != "cuda":
+        return _run_vocals(roformer, model, y, "cpu")
+    try:
+        model.to(dev)
+        return roformer.separate(model, y, dev)
+    except RuntimeError as e:
+        if not _oom(e):
+            raise
+        model.cpu()
+        raise NoRoom("no room on the GPU for the vocal model") from e
+    finally:
+        torch.cuda.empty_cache()
+
+
+def _run_vocals(roformer, model, y: np.ndarray, on: str) -> np.ndarray:
+    if on != "cpu":
+        return roformer.separate(model, y, on)
+    # On the CPU it is long: more threads than a worker usually takes.
+    keep = torch.get_num_threads()
+    torch.set_num_threads(max(keep, 8))
+    try:
+        return roformer.separate(model, y, "cpu")
+    finally:
+        torch.set_num_threads(keep)
 
 
 def separate(y: np.ndarray, keep_stereo: tuple[str, ...] = ()) -> tuple[np.ndarray, list[str], dict]:

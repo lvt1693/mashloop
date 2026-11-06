@@ -15,7 +15,9 @@ import threading
 import time
 from pathlib import Path
 
-from .config import ANALYSIS_VERSION, LIBRARY_DIR, PAIRS_DIR, TRANSITIONS_DIR
+import numpy as np
+
+from .config import ANALYSIS_VERSION, LIBRARY_DIR, PAIRS_DIR, STEMS_MODEL, TRANSITIONS_DIR
 
 _lock = threading.RLock()
 
@@ -94,10 +96,31 @@ def has_vocals(tid: str) -> bool:
     return (d / "vocals.mp3").exists() or (d / "vocals.flac").exists()  # .flac: from before MP3
 
 
+# Below this mean vocal presence a track is treated as instrumental: no stem kept.
+STEM_MIN_VOCAL = 0.05
+
+
+def needs_stem(tid: str) -> bool:
+    """A ready, sung song with its sound whose vocal stem is missing (its sound
+    was fetched again after being deleted, which keeps the analysis but not the
+    stem) or was made by an older model than STEMS_MODEL."""
+    meta = read_meta(tid) or {}
+    if meta.get("status") != "ready" or not audio_path(tid).exists():
+        return False
+    if meta.get("stems_model") == STEMS_MODEL and has_vocals(tid):
+        return False
+    try:
+        with np.load(features_path(tid)) as z:
+            return float(z["vocal"].mean()) >= STEM_MIN_VOCAL
+    except (OSError, KeyError, ValueError):
+        return False
+
+
 def sound_files(tid: str) -> list[Path]:
     """Everything of a track that is its sound (not what the analysis made)."""
     d = track_dir(tid)
-    files = [audio_path(tid), *d.glob("audio.*"), *d.glob("vocals.*"), *d.glob("source.*")]
+    files = [audio_path(tid), *d.glob("audio.*"), *d.glob("vocals.*"), *d.glob("drums.*"), *d.glob("bass.*"),
+             *d.glob("source.*")]
     return [f for f in dict.fromkeys(files) if f.exists()]
 
 

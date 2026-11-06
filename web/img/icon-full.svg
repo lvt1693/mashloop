@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The favicon's mark on a full square, a little smaller: a phone rounds
+       or masks the corners itself (the source of apple-touch-icon.png and
+       icon-maskable-512.png). -->
+  <rect width="32" height="32" fill="#16120e"/>
+  <g transform="translate(16 16) scale(0.8) translate(-16 -16)">
+    <path d="M16 16 C 19.5 10.5, 27 10.5, 27 16 C 27 21.5, 19.5 21.5, 16 16 C 12.5 10.5, 5 10.5, 5 16 C 5 21.5, 12.5 21.5, 16 16 Z"
+          fill="none" stroke="#f2b45a" stroke-width="2.8" stroke-linecap="round"/>
+    <circle cx="23.2" cy="12.4" r="2.1" fill="#fbd79a"/>
+  </g>
+</svg>

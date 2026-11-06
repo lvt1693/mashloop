@@ -643,10 +643,11 @@ export class Viz {
 
   // The room's colour: the playing song's, passing into the next song's as
   // the mix goes on. The page gets the same colour through CSS (_updateField).
+  // With no loop playing, lightOf (a mashup heard in the studio) lights it.
   _roomColor(primary, view, dt) {
     const second = [...this.rings.values()].find((r) => r.role === "second");
     const nextId = second?.track.id || this.placeholder?.id || null;
-    const a = primary ? theme.accentOf(primary.track.id) : theme.idleAccent();
+    const a = primary ? theme.accentOf(primary.track.id) : this.lightOf ? theme.accentOf(this.lightOf) : theme.idleAccent();
     const target = nextId ? theme.mix(a, theme.accentOf(nextId), this._mixProgress(view)) : a;
     const k = this.reduced ? 1 : 1 - Math.exp(-dt / 0.6);
     this.accent = theme.ease(this.accent, target, k);
@@ -1319,7 +1320,7 @@ export class Viz {
     if (place) root.setProperty("--fill-x", `${(((rect.left + place.x) / vw) * 100).toFixed(1)}%`);
     // CSS eases these over a second or so; the targets go out unsmoothed.
     const view = this.player.audible();
-    const a = primary ? theme.accentOf(primary.track.id) : theme.idleAccent();
+    const a = primary ? theme.accentOf(primary.track.id) : this.lightOf ? theme.accentOf(this.lightOf) : theme.idleAccent();
     const target = this.nextId ? theme.mix(a, theme.accentOf(this.nextId), this._mixProgress(view)) : a;
     const second2 = this.nextId ? theme.songColor(this.nextId) : null;
     theme.applyPage(target, second2, this.nextId ? 0.1 * theme.glowGain() : 0);

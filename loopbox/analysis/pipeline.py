@@ -9,7 +9,7 @@ import numpy as np
 import soundfile as sf
 
 from .. import audio, library
-from ..config import ANALYSIS_SR, ANALYSIS_VERSION, SAMPLE_RATE, TARGET_LUFS
+from ..config import ANALYSIS_SR, ANALYSIS_VERSION, SAMPLE_RATE, STEMS_MODEL, TARGET_LUFS
 from . import beats as beatmod
 from . import features as featmod
 from . import jumps as jumpmod
@@ -18,7 +18,7 @@ from .beats import HR_HOP
 from .mood import song_mood
 
 # Below this mean vocal presence a track is treated as instrumental: no stem kept.
-STEM_MIN_VOCAL = 0.05
+STEM_MIN_VOCAL = library.STEM_MIN_VOCAL
 
 
 def save_features(tid: str, **arrays) -> None:
@@ -33,19 +33,55 @@ def save_features(tid: str, **arrays) -> None:
 
 def _save_vocals(tid: str, vocals: np.ndarray | None) -> None:
     """The vocal stem as an MP3 (about 5 MB for a 4-minute song), encoded like
-    the track itself so the two stay aligned."""
+    the track itself so the two stay aligned; the new file replaces the old one
+    whole (a player may be fetching it meanwhile)."""
     d = library.track_dir(tid)
+    keep = {library.transport_path(tid, "vocals", fmt) for fmt in library.FORMATS}
+    if vocals is not None:
+        tmp = d / "vocals.tmp.flac"
+        sf.write(str(tmp), np.clip(vocals, -1.0, 1.0), SAMPLE_RATE, format="FLAC", subtype="PCM_16")
+        try:
+            for fmt in library.FORMATS:
+                audio.encode(tmp, library.transport_path(tid, "vocals", fmt), fmt, audio.BITRATE["vocals"][fmt])
+        finally:
+            tmp.unlink(missing_ok=True)
     for old in d.glob("vocals.*"):
-        old.unlink(missing_ok=True)
-    if vocals is None:
-        return
-    tmp = d / "vocals.tmp.flac"
-    sf.write(str(tmp), np.clip(vocals, -1.0, 1.0), SAMPLE_RATE, format="FLAC", subtype="PCM_16")
-    try:
-        for fmt in library.FORMATS:
-            audio.encode(tmp, library.transport_path(tid, "vocals", fmt), fmt, audio.BITRATE["vocals"][fmt])
-    finally:
-        tmp.unlink(missing_ok=True)
+        if vocals is None or old not in keep:
+            old.unlink(missing_ok=True)
+
+
+def restem(tid: str) -> bool:
+    """The vocal stem separated again by BS-RoFormer (models.vocals), when the
+    song needs it (library.needs_stem). True when the song has a current stem
+    (or needs none)."""
+    if not library.needs_stem(tid):
+        return True
+    y = audio.load(library.audio_path(tid))
+    _save_vocals(tid, models.vocals(y))
+    library.update(tid, stems_model=STEMS_MODEL)
+    return True
+
+
+def save_drums(tid: str) -> bool:
+    """The drum and bass stems as MP3s (drums.mp3, bass.mp3), separated on
+    demand from the stored audio for a mashup: the acoustic vibe takes the
+    drums out, and a band with no voice-free stretch is rebuilt from them
+    (they hold next to nothing of the voice). Deleted with the rest of the
+    song's sound."""
+    d = library.track_dir(tid)
+    if all((d / f"{s}.mp3").exists() for s in ("drums", "bass")):
+        return True
+    if not library.audio_path(tid).exists():
+        return False
+    _, _, stereo = models.separate(audio.load(library.audio_path(tid)), keep_stereo=("drums", "bass"))
+    for s in ("drums", "bass"):
+        tmp = d / f"{s}.tmp.flac"
+        sf.write(str(tmp), np.clip(stereo[s], -1.0, 1.0), SAMPLE_RATE, format="FLAC", subtype="PCM_16")
+        try:
+            audio.encode(tmp, d / f"{s}.mp3", "mp3", audio.BITRATE["vocals"]["mp3"])
+        finally:
+            tmp.unlink(missing_ok=True)
+    return True
 
 
 def analyze(tid: str, on_stage: Callable[[str, float], None] = lambda s, p: None) -> dict:
@@ -77,8 +113,9 @@ def analyze(tid: str, on_stage: Callable[[str, float], None] = lambda s, p: None
     on_stage("features", 0.65)
     feat = featmod.compute(y, y22, beats, stems)
     del stems
-    sung = float(feat["vocal"].mean()) >= STEM_MIN_VOCAL
-    _save_vocals(tid, stereo["vocals"] if sung else None)
+    is_sung = float(feat["vocal"].mean()) >= STEM_MIN_VOCAL
+    # HTDemucs' stem for now; BS-RoFormer's replaces it in the stems pool (worker.py).
+    _save_vocals(tid, stereo["vocals"] if is_sung else None)
     del stereo
     scales = similarity.own_scales(feat)
 
@@ -115,7 +152,7 @@ def analyze(tid: str, on_stage: Callable[[str, float], None] = lambda s, p: None
         "roles": rl["sections"],
         "tuning": round(float(feat["tuning"]), 1),
         "key_conf": round(key["confidence"], 3),
-        "stems": sung,
+        "stems": is_sung,
         "jumps": jr["jumps"],
         "lbp": jr["lbp"],
         "fallback": jr["fallback"],
@@ -138,6 +175,7 @@ def analyze(tid: str, on_stage: Callable[[str, float], None] = lambda s, p: None
         "jumps": len(jr["jumps"]), "lbp": jr["lbp"], "fallback": jr["fallback"],
         "analysis_version": ANALYSIS_VERSION, "analysis_seconds": round(time.time() - t0, 1),
         "mood": analysis["mood"],
+        "stems_model": "htdemucs",  # until the stems pool separates it again
     }
     on_stage("analyzed", 0.95)
     return stats

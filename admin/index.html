@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Quản trị · Mash ∞ Loop</title>
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body class="adm">
+  <header class="adm-top">
+    <div class="adm-brand">
+      <span class="brand__word">Mash</span>
+      <svg class="brand__inf" viewBox="0 0 48 24" aria-hidden="true">
+        <path class="brand__path" d="M24 12 C 30 4, 42 4, 42 12 C 42 20, 30 20, 24 12 C 18 4, 6 4, 6 12 C 6 20, 18 20, 24 12 Z"/>
+      </svg>
+      <span class="brand__word">Loop</span>
+      <span class="adm-brand__role">Quản trị</span>
+    </div>
+    <div class="adm-top__end" id="top-end" hidden>
+      <span class="mono adm-stamp" id="stamp"></span>
+      <button type="button" class="adm-btn" id="logout">Đăng xuất</button>
+    </div>
+  </header>
+
+  <!-- Sign-in -->
+  <main class="adm-login" id="login" hidden>
+    <form class="adm-card adm-login__card" id="login-form" autocomplete="on">
+      <h1 class="adm-h1">Đăng nhập quản trị</h1>
+      <label class="adm-field"><span>Tên đăng nhập</span><input id="user" name="username" autocomplete="username" required></label>
+      <label class="adm-field"><span>Mật khẩu</span><input id="pass" name="password" type="password" autocomplete="current-password" required></label>
+      <p class="adm-err" id="login-err" role="alert"></p>
+      <button type="submit" class="adm-btn adm-btn--main">Đăng nhập</button>
+    </form>
+  </main>
+
+  <!-- The dashboard -->
+  <main class="adm-main" id="dash" hidden>
+    <section class="adm-sec" aria-labelledby="h-now">
+      <h2 class="adm-h2" id="h-now">Bây giờ</h2>
+      <div class="adm-now">
+        <div class="adm-hero">
+          <span class="adm-tile__label">Đang mở trang</span>
+          <span class="adm-hero__value" id="v-open">0</span>
+          <span class="adm-tile__sub" id="v-open-sub"></span>
+        </div>
+        <div class="adm-tiles" id="tiles"></div>
+      </div>
+    </section>
+
+    <section class="adm-sec" aria-labelledby="h-sus">
+      <h2 class="adm-h2" id="h-sus">Nghi vấn <span class="adm-h3__sub" id="sus-sub"></span></h2>
+      <p class="adm-note adm-note--top">Client hành xử như chương trình: mở phiên rồi bỏ ngay, bị giới hạn chặn liên tục, user-agent của bot hay script, dò đường dẫn lạ, đăng nhập admin sai. Chỉ những client này mới được giữ IP, và chỉ trong bộ nhớ.</p>
+      <div class="adm-card adm-scroll">
+        <table class="adm-table" id="sus">
+          <thead><tr><th>Client</th><th>User-agent</th><th class="nr">Phiên mở</th><th class="nr">Hỏi thư viện</th>
+            <th class="nr">Bị từ chối</th><th>Lý do</th><th>Lần cuối</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="adm-grid2 adm-grid2--wide">
+        <div class="adm-card adm-scroll">
+          <h3 class="adm-h3 adm-h3--pad">Theo user-agent <span class="adm-h3__sub">24 giờ</span></h3>
+          <table class="adm-table" id="uas">
+            <thead><tr><th>User-agent</th><th class="nr">Client</th><th class="nr">Request</th><th class="nr">Phiên mở</th>
+              <th class="nr">Hỏi thư viện</th><th class="nr">Bị từ chối</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="adm-card">
+          <h3 class="adm-h3">Đang chặn và tin cậy</h3>
+          <ul class="adm-list" id="rules"></ul>
+          <form id="block-form" class="adm-blockf">
+            <select id="block-kind" aria-label="Loại chặn">
+              <option value="ips">IP hoặc dải IP</option>
+              <option value="agents">User-agent chứa</option>
+              <option value="trusted">Tin cậy: IP không bao giờ bị nghi hay chặn</option>
+            </select>
+            <input id="block-value" placeholder="1.2.3.4, 1.2.3.0/24 hoặc python-requests" aria-label="Giá trị chặn" required>
+            <input id="block-note" placeholder="Ghi chú (tuỳ chọn)" aria-label="Ghi chú">
+            <button type="submit" class="adm-btn adm-btn--main">Chặn</button>
+          </form>
+          <p class="adm-err" id="block-msg" role="status"></p>
+          <p class="adm-note">Request bị chặn nhận lỗi 403. Trang /admin không bao giờ bị chặn, nên bạn không tự khoá mình được. Chính server và IP đang đăng nhập admin (trong 24 giờ) luôn được tin cậy.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="adm-sec" aria-labelledby="h-all">
+      <h2 class="adm-h2" id="h-all">Tất cả khách <span class="adm-h3__sub" id="all-sub"></span></h2>
+      <p class="adm-note adm-note--top">Mọi client trong 24 giờ, nhiều request nhất trước. IP chỉ hiện với client nghi vấn. <b>Từ trang</b>: số request do chính trang web gửi trong trình duyệt. <b>Audio</b>: số bài của khách (không tính kho mẫu) mà client đã lấy âm thanh. <b>Phát</b>: thời gian trang đang phát nhạc, kèm đoạn phát liền dài nhất. Một tab để nghe lâu hỏi thư viện mỗi 20 giây (trước 31/10 là mỗi 5 giây), vài trăm tới vài nghìn request một ngày là bình thường; đổi kho mẫu dồn khoảng 90 request một lần.</p>
+      <div class="adm-card adm-scroll">
+        <table class="adm-table" id="all">
+          <thead><tr><th>Client</th><th>User-agent</th><th class="nr">Request</th><th class="nr">Từ trang</th><th class="nr">Đỉnh/phút</th>
+            <th class="nr">Phiên / hỏi</th><th class="nr">Thêm bài</th><th class="nr">Audio</th><th>Phát</th><th>Lần cuối</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="adm-sec" aria-labelledby="h-days">
+      <div class="adm-sec__head">
+        <h2 class="adm-h2" id="h-days">Lượt vào theo ngày</h2>
+        <div class="adm-seg" role="group" aria-label="Khoảng thời gian">
+          <button type="button" data-days="7">7 ngày</button>
+          <button type="button" data-days="30" class="on">30 ngày</button>
+          <button type="button" data-days="90">90 ngày</button>
+        </div>
+      </div>
+      <div class="adm-card">
+        <div class="adm-chart" id="c-days"></div>
+      </div>
+      <div class="adm-grid2">
+        <div class="adm-card">
+          <h3 class="adm-h3">Lượt vào theo giờ trong ngày <span class="adm-h3__sub" id="hours-sub"></span></h3>
+          <div class="adm-chart adm-chart--short" id="c-hours"></div>
+        </div>
+        <div class="adm-card">
+          <h3 class="adm-h3">Thời gian nghe theo giờ <span class="adm-h3__sub">phút</span></h3>
+          <div class="adm-chart adm-chart--short" id="c-listen"></div>
+        </div>
+        <div class="adm-card">
+          <h3 class="adm-h3">Một lượt vào kéo dài</h3>
+          <div class="adm-chart adm-chart--short" id="c-dur"></div>
+        </div>
+        <div class="adm-card">
+          <h3 class="adm-h3">Nghe nhiều nhất</h3>
+          <ol class="adm-rank" id="top-songs"></ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="adm-sec" aria-labelledby="h-dl">
+      <h2 class="adm-h2" id="h-dl">Tải nhạc và YouTube</h2>
+      <div class="adm-grid2">
+        <div class="adm-card">
+          <h3 class="adm-h3">Hàng chờ tải <span class="adm-h3__sub" id="q-sub"></span></h3>
+          <ol class="adm-list" id="queue"></ol>
+          <dl class="adm-kv" id="dl-today"></dl>
+        </div>
+        <div class="adm-card">
+          <h3 class="adm-h3">YouTube</h3>
+          <dl class="adm-kv" id="yt"></dl>
+          <details class="adm-more">
+            <summary>Cập nhật cookies</summary>
+            <form id="cookie-form" class="adm-cookies">
+              <p class="adm-note">Dán nội dung file cookies.txt (định dạng Netscape) xuất từ một cửa sổ ẩn danh đã đăng nhập YouTube, rồi đóng cửa sổ đó. File cũ được giữ lại một bản.</p>
+              <textarea id="cookie-text" rows="6" spellcheck="false" autocomplete="off" aria-label="Nội dung cookies.txt"></textarea>
+              <p class="adm-err" id="cookie-msg" role="status"></p>
+              <button type="submit" class="adm-btn adm-btn--main">Thay cookies</button>
+            </form>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="adm-sec" aria-labelledby="h-libs">
+      <h2 class="adm-h2" id="h-libs">Thư viện đang mở <span class="adm-h3__sub" id="libs-sub"></span></h2>
+      <div class="adm-card adm-scroll">
+        <table class="adm-table" id="libs">
+          <thead><tr><th>Lượt vào</th><th>Trạng thái</th><th>Mở lúc</th><th>Lần cuối</th><th>Bài của họ</th><th>Kho có sẵn</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="adm-sec" aria-labelledby="h-store">
+      <div class="adm-sec__head">
+        <h2 class="adm-h2" id="h-store">Kho nhạc <span class="adm-h3__sub" id="store-sub"></span></h2>
+        <div class="adm-filters">
+          <input type="search" id="store-q" placeholder="Tìm theo tên, kênh, mã" aria-label="Tìm trong kho">
+          <div class="adm-seg" role="group" aria-label="Lọc kho" id="store-f">
+            <button type="button" data-f="all" class="on">Tất cả</button>
+            <button type="button" data-f="own">Của người dùng</button>
+            <button type="button" data-f="held">Đang có người giữ</button>
+            <button type="button" data-f="error">Lỗi</button>
+          </div>
+        </div>
+      </div>
+      <div class="adm-card adm-scroll">
+        <table class="adm-table" id="store">
+          <thead><tr>
+            <th data-sort="title">Bài</th><th data-sort="source">Nguồn</th><th data-sort="status">Trạng thái</th>
+            <th data-sort="held" class="nr">Đang giữ</th><th data-sort="used_at">Nghe lần cuối</th>
+            <th data-sort="audio_until">Xoá nhạc sau</th><th data-sort="size" class="nr">Dung lượng</th><th></th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="adm-note" id="store-more"></p>
+    </section>
+
+    <section class="adm-sec" aria-labelledby="h-ads">
+      <h2 class="adm-h2" id="h-ads">Quảng cáo <span class="adm-h3__sub" id="ads-sub"></span></h2>
+      <p class="adm-note adm-note--top">Banner dưới bộ nút phát, cạnh mã QR mời cà phê. Có nhiều thì mỗi banner 8 giây, độ ưu tiên càng cao càng hay hiện. <b>Lượt thấy</b>: banner nằm trên màn hình ít nhất một giây, mỗi client tính một lần một giờ. <b>Click</b> đi qua /go/&lt;số&gt; rồi mới tới link, mỗi client một lần trong 10 phút. Chỉ tính khi chính trang web gửi, không tính máy tìm kiếm.</p>
+      <div class="adm-ads" id="ads"></div>
+      <form class="adm-card adm-adf" id="ad-form">
+        <h3 class="adm-h3">Thêm quảng cáo</h3>
+        <label class="adm-field adm-adf__file"><span>Banner (PNG, JPEG hoặc WebP, tỉ lệ khoảng 6:1, ví dụ 2400×400)</span>
+          <input id="ad-file" type="file" accept="image/png,image/jpeg,image/webp" required></label>
+        <img class="adm-adf__preview" id="ad-preview" alt="" hidden>
+        <label class="adm-field"><span>Tiêu đề</span><input id="ad-title" maxlength="80" required></label>
+        <label class="adm-field"><span>Độ ưu tiên (1 đến 10)</span><input id="ad-weight" type="number" min="1" max="10" value="1"></label>
+        <label class="adm-field adm-adf__wide"><span>Link (https, kèm UTM)</span>
+          <input id="ad-link" class="mono" placeholder="https://example.com/?utm_source=mashloop&amp;utm_medium=web_banner" required></label>
+        <label class="adm-field adm-adf__wide"><span>Mô tả ảnh (cho người dùng trình đọc màn hình)</span><input id="ad-alt" maxlength="160"></label>
+        <p class="adm-err adm-adf__wide" id="ad-msg" role="status"></p>
+        <button type="submit" class="adm-btn adm-btn--main">Thêm</button>
+      </form>
+    </section>
+
+    <section class="adm-sec" aria-labelledby="h-sys">
+      <h2 class="adm-h2" id="h-sys">Hệ thống</h2>
+      <div class="adm-grid3" id="sys"></div>
+    </section>
+  </main>
+
+  <div class="adm-tip" id="tip" role="tooltip" hidden></div>
+  <script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

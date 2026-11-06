@@ -5,9 +5,12 @@ MASHLOOP_MULTIUSER=1 every visit gets a library of its own (X-Session header)
 over a shared store of songs; see sessions.py."""
 import argparse
 import hashlib
+import mimetypes
 import os
+import shutil
 import tempfile
 import threading
+import time
 import webbrowser
 import zipfile
 from pathlib import Path
@@ -18,15 +21,17 @@ import base64
 import numpy as np
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import download, ingest, library, ratelimit, sessions, worker
+from . import admin, ads, download, guard, ingest, library, ratelimit, sessions, stats, worker
 from .audio import BITRATE as SOUND_KBPS
 from .audio import encode as encode_sound
-from .config import AUDIO_TTL_S, DATA_DIR, HOST, MAX_PLAYLIST, MAX_SESSION_TRACKS, MAX_UPLOAD_MB, MULTIUSER, PORT, \
-    WEB_DIR
+from .config import AUDIO_TTL_S, DATA_DIR, HOST, MASHUP_BACKLOG, MASHUPS, MAX_PLAYLIST, MAX_SESSION_TRACKS, \
+    MAX_UPLOAD_MB, MULTIUSER, NEW_TRACKS_DAY, PORT, VISITS_HOUR, WEB_DIR
+from .mashup import plan as mplan
+from .mashup import store as mstore
 
 # Songs waiting to be fetched and analysed, all listeners together: past this
 # the server says it is busy rather than queueing for hours.
@@ -36,20 +41,125 @@ app = FastAPI(title="Mash ∞ Loop", docs_url=None if MULTIUSER else "/docs", re
               openapi_url=None if MULTIUSER else "/openapi.json")
 
 
+@app.middleware("http")
+async def _guard(request: Request, call_next):
+    """Blocked clients, user agents and addresses get a 403 (guard.py; never
+    on the admin page); every answer is counted for the admin's suspects."""
+    ip = request.client.host if request.client else "?"
+    ua = request.headers.get("user-agent", "")
+    path = request.url.path
+    if guard.blocked(ip, ua, path):
+        if path.startswith("/api/"):
+            return JSONResponse({"detail": "Truy cập bị chặn"}, status_code=403, headers={"Cache-Control": "no-store"})
+        return PlainTextResponse("Truy cập bị chặn", status_code=403)
+    # The API answers the site's own page only: what another site's page (or
+    # an app's web view showing one) sends it, by fetch, a form, an image or
+    # a frame, is refused, so nobody wires it into theirs.
+    elsewhere = path.startswith("/api/") and _from_elsewhere(request)
+    if elsewhere:
+        response = JSONResponse({"detail": "Không gọi được từ trang khác"}, status_code=403)
+    else:
+        response = await call_next(request)
+        if response.status_code == 404 and guard.is_probe(path) and not guard.CRAWLER_UA.search(ua):
+            response = _bro(request)
+    # No answer of the API is kept by the browser: Chrome keeps a 410 without
+    # Cache-Control for good, and answered every later poll of a page with
+    # the one it got when the server restarted. Nothing of the site can be
+    # framed by another one, and the API's answers (sound, analyses) are not
+    # handed to another site's page either.
+    if path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+        # (Crawled, since a search engine renders the page with it, never listed.)
+        response.headers.setdefault("X-Robots-Tag", "noindex")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    guard.seen(ip, ua, request.method, path, response.status_code, _from_page(request),
+               path == "/api/tracks" and request.query_params.get("p") == "1",
+               hints=request.headers.get("sec-ch-ua", ""), elsewhere=elsewhere,
+               automated=path == "/api/session" and _driven(request),
+               framed=request.headers.get("sec-fetch-dest") in ("iframe", "frame", "embed", "object"))
+    return response
+
+
+# A scanner's probe (/.env, /wp-login.php, /.git/config...): a word for
+# whoever reads the answer, a person or the model an agent runs on. Still a 404,
+# so nothing looks found; ten probes and the address is blocked for a day
+# (guard.AUTO_PROBES). Search engines get the plain 404.
+REPO = "https://github.com/lvt1693/mashloop"
+BRO = ("Bro, stop poking around. There is nothing hidden here, and it only wastes your time (and tokens).\n"
+       f"The whole thing is open source: {REPO}\n"
+       "Clone it and use it however you like.\n"
+       "(Keep probing and this address gets blocked for a day.)\n")
+BRO_PAGE = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"robots\" content=\"noindex\">"
+            "<title>Nothing here</title></head>"
+            "<body style=\"margin:0;background:#111;color:#eee;font:17px/1.6 system-ui,sans-serif\">"
+            "<main style=\"max-width:36rem;margin:18vh auto;padding:0 16px\">"
+            "<p>Bro, stop poking around. There is nothing hidden here, and it only wastes your time (and tokens).</p>"
+            f"<p>The whole thing is open source: <a style=\"color:#f5b942\" href=\"{REPO}\">github.com/lvt1693/mashloop</a>. "
+            "Clone it and use it however you like.</p>"
+            "<p style=\"color:#999;font-size:14px\">Keep probing and this address gets blocked for a day.</p>"
+            "</main></body></html>")
+
+
+def _bro(request: Request) -> Response:
+    if "text/html" in request.headers.get("accept", ""):
+        return Response(BRO_PAGE, status_code=404, media_type="text/html; charset=utf-8")
+    return PlainTextResponse(BRO, status_code=404)
+
+
+def _driven(request: Request) -> bool:
+    """The page says a program drives its browser (navigator.webdriver). Not
+    held against a search engine by name: its renderer may say so, and what it
+    indexes must be the page, not the refusal."""
+    return ("wd=1" in request.headers.get("x-env", "")
+            and not guard.CRAWLER_UA.search(request.headers.get("user-agent", "")))
+
+
+def _from_elsewhere(request: Request) -> bool:
+    """A request another site's page made (the browser says so), or one whose
+    origin is not this site (a sandboxed frame's is "null")."""
+    if request.headers.get("sec-fetch-site") in ("cross-site", "same-site"):
+        return True
+    origin = request.headers.get("origin")
+    return origin is not None and (origin == "null" or origin.split("://", 1)[-1] != request.headers.get("host"))
+
+
+def _from_page(request: Request) -> bool:
+    """A request the site's own page made in a browser (fetch marks it; a
+    program has to fake it): a stuck tab, not a script."""
+    if request.headers.get("sec-fetch-site") == "same-origin":
+        return True
+    origin = request.headers.get("origin") or ""
+    return bool(origin) and origin.split("://", 1)[-1] == request.headers.get("host")
+
+
 class AddRequest(BaseModel):
     text: str | None = None
     ids: list[str] | None = None  # songs of a library being restored after a server restart
+    saved: bool = False  # ... or the library a browser saved, put back on a new visit
 
 
 class PatchRequest(BaseModel):
     enabled: bool | None = None
 
 
-def view_of(x_session: str | None = Header(default=None)) -> sessions.View:
+def view_of(request: Request, x_session: str | None = Header(default=None)) -> sessions.View:
     v = sessions.get(x_session)
     if v is None:
-        raise HTTPException(410, "session expired")
+        # Hosted, a page whose visit was lost (the server restarted) gets a
+        # fresh pass with the news, so it opens the next one at once (a page
+        # loaded before there were passes too).
+        raise HTTPException(410, "session expired", headers={"Set-Cookie": _pass_cookie(request.url.scheme == "https")}
+                            if MULTIUSER and x_session else None)
     return v
+
+
+def _pass_cookie(secure: bool) -> str:
+    """The pass (guard.py) as a cookie, sent back only to /api/session."""
+    return (f"{guard.PASS_COOKIE}={guard.new_pass()}; HttpOnly; Max-Age={guard.PASS_S}; Path=/api/session; "
+            f"SameSite=strict{'; Secure' if secure else ''}")
 
 
 def _public(m: dict) -> dict:
@@ -128,17 +238,20 @@ def _admit(ip: str, v: sessions.View, ids: list[str]) -> tuple[list[str], str | 
         keep.append(t)
     new = [t for t in keep if _is_new(t)]
     if new:
-        allowed = min(ratelimit.room(ip, "new_track"), max(0, MAX_BACKLOG - worker.backlog()))
+        allowed = min(ratelimit.room(ip, "new_track"), ratelimit.room(ip, "new_track_day"),
+                      max(0, MAX_BACKLOG - worker.backlog()))
         if allowed <= 0:
             if worker.backlog() >= MAX_BACKLOG:
                 raise HTTPException(503, "Server đang bận phân tích nhiều bài, thử lại sau ít phút")
             ratelimit.check(ip, "new_track", len(new))  # raises 429 with the wait
+            ratelimit.check(ip, "new_track_day", len(new))
         if len(new) > allowed:
             drop = set(new[allowed:])
             keep = [t for t in keep if t not in drop]
             new = new[:allowed]
             note = "Một số bài chưa được thêm: bạn đã thêm nhiều bài mới, thử lại sau"
         ratelimit.check(ip, "new_track", len(new))
+        ratelimit.check(ip, "new_track_day", len(new))
     return keep, note
 
 
@@ -158,18 +271,57 @@ def _add(v: sessions.View, tid: str, added: list) -> None:
 
 @app.post("/api/session")
 def new_session(request: Request):
+    # Hosted, a visit opens only with the pass the page brought when it loaded
+    # (a cookie: guard.py); a program that only calls this gets nothing made.
+    # The box's own tools (deploy/seed_*.py) call it directly. The site's own
+    # page in a browser opens one without it: a copy of the page the browser
+    # kept from before the passes (restored tabs, back and forward never ask
+    # for the page again), which is told to drop what it kept.
+    # A browser driven by a program (Puppeteer, Playwright, Selenium: the page
+    # reads navigator.webdriver and says so) opens none.
+    if MULTIUSER and _ip(request) not in guard.LOCAL and _driven(request):
+        raise HTTPException(403, "Trình duyệt đang bị điều khiển tự động: không mở được phiên")
+    stale = False
+    if MULTIUSER and _ip(request) not in guard.LOCAL and not guard.spend_pass(request.cookies.get(guard.PASS_COOKIE)):
+        if not _from_page(request):
+            raise HTTPException(428, "Hãy tải lại trang (và cho phép cookie của trang này)")
+        stale = True
     ratelimit.check(_ip(request), "session")
-    v = sessions.create()
-    return {"sid": v.id, "multiuser": MULTIUSER, "k": base64.b64encode(v.key).decode() if v.key else None,
-            "limits": {"tracks": MAX_SESSION_TRACKS if MULTIUSER else None, "playlist": MAX_PLAYLIST,
-                       "upload_mb": MAX_UPLOAD_MB, "audio_ttl_h": AUDIO_TTL_S // 3600 if MULTIUSER else None}}
+    try:
+        v = sessions.create()
+    except sessions.Full:
+        raise HTTPException(503, "Server đang quá tải, thử lại sau ít phút")
+    stats.visit(_ip(request))
+    out = {"sid": v.id, "multiuser": MULTIUSER, "mashups": MASHUPS,
+           "k": base64.b64encode(v.key).decode() if v.key else None,
+           "limits": {"tracks": MAX_SESSION_TRACKS if MULTIUSER else None, "playlist": MAX_PLAYLIST,
+                      "upload_mb": MAX_UPLOAD_MB, "audio_ttl_h": AUDIO_TTL_S // 3600 if MULTIUSER else None}}
+    # (Also the 410 its polls may have kept for good: it then reaches the server again.)
+    return JSONResponse(out, headers={"Clear-Site-Data": '"cache"'}) if stale else out
 
 
 @app.get("/api/tracks")
-def tracks(v: sessions.View = Depends(view_of)):
+def tracks(request: Request, p: int = 0, v: sessions.View = Depends(view_of)):
+    """The library; p=1 from a page that is playing (counted as listening)."""
+    v.keep_alive()
+    stats.poll(v.id, bool(p))
     metas = v.metas()
-    return {"tracks": [_public(m) for m in metas], "worker": worker.status([m["id"] for m in metas]),
-            "links": v.link_ver, "room": v.room() if MULTIUSER else None, "stale_server": worker.stale(metas)}
+    samples = set(library.samples()["ids"])
+    out = []
+    for m in metas:
+        p = _public(m)
+        # Hosted: when the song's sound goes if nobody uses it any more (the
+        # sample libraries stay). The page counts it down.
+        if MULTIUSER and m["id"] not in samples and library.has_audio(m["id"]):
+            p["audio_until"] = round(library.last_used(m["id"]) + AUDIO_TTL_S)
+        out.append(p)
+    return {"tracks": out, "worker": worker.status([m["id"] for m in metas]),
+            "links": v.link_ver, "room": v.room() if MULTIUSER else None, "stale_server": worker.stale(metas),
+            # The downloads of everyone, this library's songs named in it.
+            "queue": worker.download_queue({m["id"] for m in metas}),
+            # Hosted: what this address may still bring in today, and the limits (shown under the add box).
+            "quota": {"new_left": ratelimit.room(_ip(request), "new_track_day"), "new_day": NEW_TRACKS_DAY,
+                      "visits_hour": VISITS_HOUR} if MULTIUSER else None}
 
 
 @app.get("/api/search")
@@ -191,6 +343,8 @@ def add(req: AddRequest, request: Request, v: sessions.View = Depends(view_of)):
         keep, note = _admit(ip, v, [t for t in ids if t not in gone])
         for tid in keep:
             _add(v, tid, added)
+        if req.saved:
+            stats.returning()
         if gone:
             note = "; ".join(filter(None, [note, f"{len(gone)} bài tải lên đã được xoá khỏi server sau "
                                                 f"{AUDIO_TTL_S // 3600} giờ không ai nghe: hãy tải lại file"]))
@@ -215,6 +369,7 @@ def add(req: AddRequest, request: Request, v: sessions.View = Depends(view_of)):
     for tid in keep:
         ingest.register(by_id[tid])
         _add(v, tid, added)
+    stats.added(len(added))
     return {"added": added, "note": note}
 
 
@@ -295,6 +450,7 @@ async def upload(request: Request, v: sessions.View = Depends(view_of), x_filena
             raise HTTPException(400, "file trống hoặc quá nhỏ")
         if zipfile.is_zipfile(tmp):
             note = _unzip(tmp, v, added, ip)
+            stats.uploaded(len(added))
             return {"added": added, "note": note}
         tid = "u" + h.hexdigest()[:16]
         if _is_new(tid) and worker.backlog() >= MAX_BACKLOG:
@@ -304,6 +460,7 @@ async def upload(request: Request, v: sessions.View = Depends(view_of), x_filena
     finally:
         tmp.unlink(missing_ok=True)
     _add(v, tid, added)
+    stats.uploaded(1)
     return {"added": added}
 
 
@@ -329,9 +486,15 @@ def patch(tid: str, req: PatchRequest, v: sessions.View = Depends(view_of)):
 
 @app.delete("/api/tracks/{tid}")
 def delete(tid: str, v: sessions.View = Depends(view_of)):
-    """Hosted, the song only leaves this library (the store keeps it for others)."""
+    """Hosted, the song only leaves this library (the store keeps it for others).
+    A song still waiting for its download, or being downloaded, that no other
+    library wants is called off: its place in the queue goes to the next."""
     _meta(tid)
+    if not MULTIUSER:
+        worker.cancel_download(tid)
     v.remove(tid)
+    if MULTIUSER and not sessions.held(tid):
+        worker.cancel_download(tid)
     return {"deleted": tid}
 
 
@@ -385,6 +548,7 @@ def audio(tid: str, request: Request, v: sessions.View = Depends(view_of)):
     _ready(tid)
     _held(v, tid)
     library.touch(tid)
+    stats.play(tid)
     if not library.has_audio(tid):  # deleted after going unused, just before this listener asked
         if _restore(tid):
             worker.enqueue_ingest(tid)
@@ -446,7 +610,203 @@ def transitions(tid: str, v: sessions.View = Depends(view_of)):
     return {"items": v.transitions(tid), "onward": v.onward(tid)}
 
 
-app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
+# ------------------------------------------------------------------ mashups
+#
+# Made from songs of the caller's library, kept MASHUP_TTL_S, readable with
+# the token the creator got (kept in their browser, not tied to a session: they
+# come back with a new one). Heard on the page only, never downloaded: the
+# sound goes out scrambled like a song's, with a key made from that token.
+
+class MashupRequest(BaseModel):
+    ids: list[str]
+    roles: dict[str, str] | None = None
+    style: str | None = None
+    vibe: str | None = None
+    length: float | None = None
+    bpm: float | None = None
+    key: str | None = None
+    fx: dict[str, bool] | None = None
+    variant: int | None = None
+    pace: str | None = None
+
+
+class MashupKeys(BaseModel):
+    items: list[dict]
+
+
+def _mashup_of(mid: str, token: str | None) -> dict:
+    meta = mstore.authorize(mid, token) if mstore.valid_id(mid) else None
+    if not meta:
+        raise HTTPException(404, "Không có bài mashup này, hoặc nó đã hết hạn")
+    return meta
+
+
+def _plan_view(plan: dict) -> dict:
+    """What the page shows of a plan: the frame, the form, the sources."""
+    view = {k: plan.get(k) for k in ("style", "vibe", "bpm", "rate", "key", "mood", "bars", "seconds", "notes", "fx",
+                                     "moves", "variant", "variants", "pace")}
+    view["sections"] = [{k: s.get(k) for k in ("kind", "label", "t0", "t1", "music", "voice")}
+                        for s in plan.get("sections", [])]
+    view["sources"] = plan.get("sources", [])
+    return view
+
+
+def _mashup_view(meta: dict) -> dict:
+    out = mstore.public(meta)
+    out["ahead"] = worker.mashup_ahead(meta["id"])
+    out["plan"] = _plan_view(library.read_json(mstore.plan_path(meta["id"])) or {})
+    out["now"] = time.time()  # the server's clock, for the countdown
+    return out
+
+
+def _mashup_options(req: MashupRequest, v: sessions.View) -> dict:
+    if not MASHUPS:
+        raise HTTPException(404, "Tạo mashup đang tạm tắt")
+    try:
+        opts = mplan.clean_options(req.model_dump() if hasattr(req, "model_dump") else req.dict())
+    except mplan.PlanError as e:
+        raise HTTPException(400, str(e))
+    for tid in opts["ids"]:
+        _ready(tid)
+        _held(v, tid)
+    return opts
+
+
+@app.post("/api/mashups/preview")
+def preview_mashup(req: MashupRequest, request: Request, v: sessions.View = Depends(view_of)):
+    """The plan the options would make (the common tempo, key and mood, the
+    form), shown before anything is rendered."""
+    opts = _mashup_options(req, v)
+    ratelimit.check(_ip(request), "mashup_preview")
+    try:
+        return _plan_view(mplan.make(opts))
+    except mplan.PlanError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/mashups")
+def create_mashup(req: MashupRequest, request: Request, v: sessions.View = Depends(view_of)):
+    opts = _mashup_options(req, v)
+    if worker.mashup_backlog() >= MASHUP_BACKLOG:
+        raise HTTPException(503, "Đang có nhiều bài mashup chờ dựng, thử lại sau ít phút")
+    ratelimit.check(_ip(request), "mashup")
+    try:
+        plan = mplan.make(opts)
+    except mplan.PlanError as e:
+        raise HTTPException(400, str(e))
+    mid, token = mstore.create(opts, plan)
+    for s in plan["sources"]:
+        library.touch(s["id"])
+    # The songs' vocal stems by the current model first (they sing, and the
+    # bands are the mix without them), then the drum and bass stems, then the render.
+    worker.enqueue_mashup(mid, mplan.parts_needed(plan), [s["id"] for s in plan["sources"]])
+    return {"id": mid, "token": token, "mashup": _mashup_view(mstore.read(mid))}
+
+
+@app.post("/api/mashups/status")
+def mashups_status(req: MashupKeys):
+    """The caller's mashups (ids and tokens from their browser), and the ones gone."""
+    out, gone = [], []
+    for it in req.items[:30]:
+        mid, token = str(it.get("id", "")), str(it.get("token", ""))
+        meta = mstore.authorize(mid, token) if mstore.valid_id(mid) else None
+        if meta:
+            out.append(_mashup_view(meta))
+        else:
+            gone.append(mid)
+    return {"mashups": out, "gone": gone, "now": time.time()}
+
+
+@app.get("/api/mashups/{mid}/audio")
+def mashup_audio(mid: str, request: Request, x_mashup_token: str | None = Header(default=None)):
+    meta = _mashup_of(mid, x_mashup_token)
+    path = mstore.audio_path(mid)
+    if meta["status"] != "done" or not path.exists():
+        raise HTTPException(409, "Bài mashup chưa dựng xong")
+    if not MULTIUSER:
+        return FileResponse(path, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+    ratelimit.check(_ip(request), "audio")
+    data = np.frombuffer(path.read_bytes(), dtype=np.uint8)
+    ks = np.frombuffer(keystream(hashlib.sha256(x_mashup_token.encode()).digest(), mid), dtype=np.uint8)
+    return Response((data ^ np.resize(ks, data.size)).tobytes(), media_type="application/octet-stream",
+                    headers={"Cache-Control": "no-store", "X-Mash": "1"})
+
+
+@app.delete("/api/mashups/{mid}")
+def delete_mashup(mid: str, x_mashup_token: str | None = Header(default=None)):
+    _mashup_of(mid, x_mashup_token)
+    loop = mstore.delete(mid)
+    if loop:
+        library.delete(loop)
+    return {"deleted": mid}
+
+
+@app.post("/api/mashups/{mid}/loop")
+def mashup_loop(mid: str, v: sessions.View = Depends(view_of), x_mashup_token: str | None = Header(default=None)):
+    """The mashup as a song of the caller's library, analysed like any other,
+    to be played in the loop (kept as long as the mashup)."""
+    if not MASHUPS:
+        raise HTTPException(404, "Tạo mashup đang tạm tắt")
+    meta = _mashup_of(mid, x_mashup_token)
+    if meta["status"] != "done":
+        raise HTTPException(409, "Bài mashup chưa dựng xong")
+    tid = meta.get("loop_tid") or "u" + hashlib.sha1(f"mashup:{mid}".encode()).hexdigest()[:16]
+    if not library.read_meta(tid) or not library.has_audio(tid):
+        fd, name = tempfile.mkstemp(dir=_tmp_dir(), suffix=".mp3")
+        os.close(fd)
+        tmp = Path(name)
+        shutil.copyfile(mstore.audio_path(mid), tmp)
+        ingest.register_upload(tid, f"Mashup {meta['title']}.mp3", tmp)
+        tmp.unlink(missing_ok=True)
+        library.update(tid, title=f"Mashup: {meta['title']}"[:200], mashup=mid)
+        mstore.update(mid, loop_tid=tid)
+    added: list = []
+    if tid not in v.track_ids():
+        _add(v, tid, added)
+    return {"tid": tid, "added": added}
+
+
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+
+
+class _Web(StaticFiles):
+    """The page and its scripts, checked with the server on every load (a 304
+    by their ETag when unchanged): without it a browser keeps a copy for hours
+    on its own guess, and runs an old page after a deploy."""
+
+    async def get_response(self, path, scope):
+        r = await super().get_response(path, scope)
+        r.headers.setdefault("Cache-Control", "no-cache")
+        # Hosted, the page (also when unchanged: a 304) brings a fresh pass to open its visit with.
+        if MULTIUSER and path in (".", "index.html") and r.status_code in (200, 304):
+            r.headers.append("set-cookie", _pass_cookie(scope.get("scheme") == "https"))
+        return r
+
+
+# No app speaks for this site: an app that names the domain as its own
+# (Android App Links, iOS Universal Links) is only believed when the site
+# lists it here, and these lists are empty, so no such claim can be verified.
+_WELL_KNOWN = {"Cache-Control": "public, max-age=86400"}
+
+
+@app.get("/.well-known/assetlinks.json", include_in_schema=False)
+def assetlinks():
+    return JSONResponse([], headers=_WELL_KNOWN)
+
+
+@app.get("/.well-known/apple-app-site-association", include_in_schema=False)
+def apple_app_site_association():
+    return JSONResponse({"applinks": {"details": []}, "webcredentials": {"apps": []}, "appclips": {"apps": []}},
+                        headers=_WELL_KNOWN)
+
+
+# The admin page and its API (linked from nowhere, a 404 until its account is set).
+app.include_router(admin.router)
+# The banners under the deck: the list, their images, "seen", and the click through /go/<id>.
+app.include_router(ads.router)
+ratelimit.on_refused = stats.limited
+worker.on_download = stats.download
+app.mount("/", _Web(directory=WEB_DIR, html=True), name="web")
 
 
 def main() -> None:
@@ -455,11 +815,19 @@ def main() -> None:
     ap.add_argument("--host", default=HOST)
     ap.add_argument("--port", type=int, default=PORT)
     args = ap.parse_args()
+    # The songs an open library holds, the loop songs of live mashups and the
+    # songs of the mashups still to be made keep their sound (from going
+    # unused, and from the store's size limit).
+    keep = lambda: sessions.in_use() | mstore.loop_ids() | mstore.active_sources()  # noqa: E731
+    worker.keep_ids = keep
     worker.start()
+    stats.start(sessions.views)
+    guard.start()  # HAProxy turns the blocked away too
     if MULTIUSER:
-        worker.start_retention(AUDIO_TTL_S, sessions.in_use)
+        worker.start_retention(AUDIO_TTL_S, keep)
     else:
         sessions.local().link()  # pairs missing after an update are computed in the background
+        worker.start_retention(None, set)  # mashups still expire
     if args.open:
         webbrowser.open(f"http://{args.host}:{args.port}")
     # No access log: the client addresses are not kept anywhere.

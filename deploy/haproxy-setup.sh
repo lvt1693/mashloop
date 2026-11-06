@@ -25,7 +25,14 @@ if [ ! -f "/etc/haproxy/certs/$DOMAIN.pem" ]; then
     RENEWED_LINEAGE="/etc/letsencrypt/live/$DOMAIN" sh /etc/letsencrypt/renewal-hooks/deploy/haproxy.sh
 fi
 
+# (The box's live haproxy.cfg may front other projects too: merge by hand
+# there rather than overwrite it.)
 install -m 644 "$APP/deploy/haproxy.cfg" /etc/haproxy/haproxy.cfg
+# The blocked and trusted address lists the config loads (the app fills them).
+touch /etc/haproxy/mashloop-block.lst /etc/haproxy/mashloop-trust.lst
+# The request log's file, made ahead: rsyslog runs as syslog and cannot create
+# it where /var/log is not group-writable (logrotate then keeps its owner).
+[ -e /var/log/haproxy.log ] || install -o syslog -g adm -m 0640 /dev/null /var/log/haproxy.log
 haproxy -c -q -f /etc/haproxy/haproxy.cfg
 systemctl enable haproxy >/dev/null 2>&1
 systemctl reload-or-restart haproxy
